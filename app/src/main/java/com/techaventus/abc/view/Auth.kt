@@ -98,7 +98,7 @@ fun AuthScreen(viewModel: KosmiViewModel) {
                 tint = Color(0xFFEC4899)
             )
             Text(
-                "WatchTogether",
+                "Kosmi Clone",
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,

@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +51,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.techaventus.abc.viewmodel.KosmiViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -58,12 +60,14 @@ fun RoomScreen(viewModel: KosmiViewModel) {
     val room by viewModel.currentRoom.collectAsState()
     var isPlayerReady by remember { mutableStateOf(false) }
     var currentYoutubeTime by remember { mutableStateOf(0f) }
+    var lastTimeUpdate by remember { mutableStateOf(0L) }
 
     DisposableEffect(Unit) {
         onDispose {
             viewModel.exoPlayer?.release()
             viewModel.exoPlayer = null
             viewModel.youtubePlayer = null
+            viewModel.isYoutubePlayerReady = false
         }
     }
 
@@ -97,15 +101,19 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                                 initialize(object : AbstractYouTubePlayerListener() {
                                     override fun onReady(youTubePlayer: YouTubePlayer) {
                                         viewModel.youtubePlayer = youTubePlayer
+                                        viewModel.isYoutubePlayerReady = true
                                         isPlayerReady = true
 
-                                        // Load video
-                                        youTubePlayer.cueVideo(videoId, (room?.currentTime ?: 0) / 1000f)
+                                        // Load video at saved position
+                                        val startTime = (room?.currentTime ?: 0) / 1000f
+                                        youTubePlayer.cueVideo(videoId, startTime)
 
                                         // Auto play if room state says playing
                                         if (room?.isPlaying == true) {
                                             youTubePlayer.play()
                                         }
+
+                                        println("DEBUG: YouTube Player Ready - Starting at ${startTime}s")
                                     }
 
                                     override fun onCurrentSecond(
@@ -114,6 +122,13 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                                     ) {
                                         currentYoutubeTime = second
                                         viewModel.currentYoutubeTime = second
+
+                                        // Update Firebase every 5 seconds
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastTimeUpdate > 5000) {
+                                            viewModel.updateYouTubeTime(second)
+                                            lastTimeUpdate = now
+                                        }
                                     }
 
                                     override fun onStateChange(
@@ -122,9 +137,13 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                                     ) {
                                         if (!isPlayerReady) return
 
+                                        println("DEBUG: YouTube State Changed: $state")
+
                                         when (state) {
                                             com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.PLAYING -> {
+                                                // Only update if room state is not playing (user initiated)
                                                 if (room?.isPlaying == false) {
+                                                    println("DEBUG: User played video - updating Firebase")
                                                     viewModel.updatePlaybackState(
                                                         true,
                                                         (currentYoutubeTime * 1000).toLong()
@@ -133,7 +152,9 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                                             }
 
                                             com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.PAUSED -> {
+                                                // Only update if room state is playing (user initiated)
                                                 if (room?.isPlaying == true) {
+                                                    println("DEBUG: User paused video - updating Firebase")
                                                     viewModel.updatePlaybackState(
                                                         false,
                                                         (currentYoutubeTime * 1000).toLong()
@@ -151,23 +172,6 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                             .fillMaxWidth()
                             .aspectRatio(16f / 9f)
                     )
-
-                    // Sync YouTube player state
-                    LaunchedEffect(room?.isPlaying, room?.currentTime) {
-                        if (!isPlayerReady) return@LaunchedEffect
-
-                        viewModel.youtubePlayer?.let { player ->
-                            room?.let { roomData ->
-                                val currentTimeMs = (currentYoutubeTime * 1000).toLong()
-                                val timeDiff = kotlin.math.abs(currentTimeMs - roomData.currentTime)
-
-                                // Seek if time difference is more than 3 seconds
-                                if (timeDiff > 3000) {
-                                    player.seekTo(roomData.currentTime / 1000f)
-                                }
-                            }
-                        }
-                    }
                 } else {
                     Box(
                         modifier = Modifier
@@ -207,19 +211,13 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                         .aspectRatio(16f / 9f)
                 )
 
-                // Sync ExoPlayer state
-                LaunchedEffect(room?.isPlaying, room?.currentTime) {
-                    viewModel.exoPlayer?.let { player ->
-                        room?.let { roomData ->
-                            val timeDiff =
-                                kotlin.math.abs(player.currentPosition - roomData.currentTime)
-                            if (timeDiff > 2000) {
-                                player.seekTo(roomData.currentTime)
-                            }
-                            if (roomData.isPlaying && !player.isPlaying) {
-                                player.play()
-                            } else if (!roomData.isPlaying && player.isPlaying) {
-                                player.pause()
+                // Periodic time update for ExoPlayer
+                LaunchedEffect(Unit) {
+                    while (true) {
+                        delay(5000)
+                        viewModel.exoPlayer?.let { player ->
+                            if (player.isPlaying) {
+                                viewModel.updatePlaybackState(true, player.currentPosition)
                             }
                         }
                     }
@@ -241,6 +239,7 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                         "youtube" -> {
                             viewModel.youtubePlayer?.let { player ->
                                 val newIsPlaying = !(room?.isPlaying ?: false)
+                                println("DEBUG: Manual play/pause - New state: $newIsPlaying")
                                 viewModel.updatePlaybackState(
                                     newIsPlaying,
                                     (currentYoutubeTime * 1000).toLong()
@@ -282,11 +281,20 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp
                     )
-                    Text(
-                        "${room?.members?.size ?: 0} watching",
-                        color = Color.Gray,
-                        fontSize = 12.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Person,
+                            null,
+                            tint = Color.Green,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            "${room?.members?.size ?: 0} watching",
+                            color = Color.Gray,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
 
                 IconButton(onClick = { viewModel.leaveRoom() }) {

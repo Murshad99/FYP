@@ -17,6 +17,7 @@ import com.techaventus.abc.model.FriendRequest
 import com.techaventus.abc.model.Member
 import com.techaventus.abc.model.RoomData
 import com.techaventus.abc.model.UserProfile
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -61,10 +62,13 @@ class KosmiViewModel : ViewModel() {
     val error: StateFlow<String?> = _error
 
     var exoPlayer: ExoPlayer? = null
-    var youtubePlayer: com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer? = null
+    var youtubePlayer: com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer? =
+        null
     private var roomListener: ValueEventListener? = null
     private var lastSyncTime = 0L
-    var currentYoutubeTime = 0f // Track YouTube current time
+    var currentYoutubeTime = 0f
+    var isYoutubePlayerReady = false
+    private var shouldUpdateFirebase = true // Control when to update Firebase
 
     init {
         if (auth.currentUser != null) {
@@ -203,11 +207,12 @@ class KosmiViewModel : ViewModel() {
                 val profile = _userProfile.value
 
                 // Detect video type
-                val videoType = if (videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")) {
-                    "youtube"
-                } else {
-                    "url"
-                }
+                val videoType =
+                    if (videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be")) {
+                        "youtube"
+                    } else {
+                        "url"
+                    }
 
                 val room = RoomData(
                     roomId = roomId,
@@ -217,10 +222,16 @@ class KosmiViewModel : ViewModel() {
                     isPublic = isPublic,
                     creator = profile?.username ?: "User",
                     creatorId = user.uid,
-                    members = mapOf(user.uid to Member(userId = user.uid, username = profile?.username ?: "User"))
+                    members = mapOf(
+                        user.uid to Member(
+                            userId = user.uid,
+                            username = profile?.username ?: "User"
+                        )
+                    )
                 )
 
                 database.child("rooms").child(roomId).setValue(room).await()
+                fetchMyRooms() // Refresh my rooms list
                 joinRoom(roomId)
             } catch (e: Exception) {
                 _error.value = e.message
@@ -236,22 +247,34 @@ class KosmiViewModel : ViewModel() {
                 val user = auth.currentUser ?: return@launch
                 val profile = _userProfile.value
                 database.child("rooms").child(roomId).child("members").child(user.uid)
-                    .setValue(Member(userId = user.uid, username = profile?.username ?: "User")).await()
+                    .setValue(Member(userId = user.uid, username = profile?.username ?: "User"))
+                    .await()
 
-                // Listen to room state changes
+                // Listen to room state changes for real-time sync
                 roomListener = object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
                         val room = snapshot.getValue(RoomData::class.java)
+                        val oldRoom = _currentRoom.value
                         _currentRoom.value = room
 
-                        // Sync video with small delay to avoid rapid updates
-                        val now = System.currentTimeMillis()
-                        if (now - lastSyncTime > 1000) {
-                            syncVideoState(room)
-                            lastSyncTime = now
+                        // Only sync if state changed from another user
+                        room?.let { newRoom ->
+                            if (oldRoom != null) {
+                                // Check if update came from another user
+                                val playStateChanged = oldRoom.isPlaying != newRoom.isPlaying
+                                val timeChanged =
+                                    kotlin.math.abs(oldRoom.currentTime - newRoom.currentTime) > 2000
+
+                                if (playStateChanged || timeChanged) {
+                                    syncVideoToState(newRoom)
+                                }
+                            }
                         }
                     }
-                    override fun onCancelled(error: DatabaseError) {}
+
+                    override fun onCancelled(error: DatabaseError) {
+                        _error.value = error.message
+                    }
                 }
 
                 database.child("rooms").child(roomId).addValueEventListener(roomListener!!)
@@ -259,23 +282,44 @@ class KosmiViewModel : ViewModel() {
                 val snapshot = database.child("rooms").child(roomId).get().await()
                 _currentRoom.value = snapshot.getValue(RoomData::class.java)
                 _screen.value = "room"
+
+                // Start presence update
+                startPresenceUpdate(roomId)
             } catch (e: Exception) {
                 _error.value = e.message
             }
         }
     }
 
-    private fun syncVideoState(room: RoomData?) {
-        room ?: return
-
+    private fun syncVideoToState(room: RoomData) {
         when (room.videoType) {
             "youtube" -> {
                 youtubePlayer?.let { player ->
-                    // Sync time only if difference is more than 2 seconds
-                    // YouTube API doesn't have direct currentTime getter in this version
-                    // We rely on Firebase state
+                    if (!isYoutubePlayerReady) return
+
+                    shouldUpdateFirebase = false // Don't update Firebase during sync
+
+                    // Sync time
+                    val targetTime = room.currentTime / 1000f
+                    val timeDiff = kotlin.math.abs(currentYoutubeTime - targetTime)
+                    if (timeDiff > 3) {
+                        player.seekTo(targetTime)
+                    }
+
+                    // Sync play/pause state
+                    if (room.isPlaying) {
+                        player.play()
+                    } else {
+                        player.pause()
+                    }
+
+                    viewModelScope.launch {
+                        delay(1000)
+                        shouldUpdateFirebase = true // Re-enable Firebase updates
+                    }
                 }
             }
+
             else -> {
                 exoPlayer?.let { player ->
                     val timeDiff = kotlin.math.abs(player.currentPosition - room.currentTime)
@@ -292,8 +336,22 @@ class KosmiViewModel : ViewModel() {
         }
     }
 
+    private fun startPresenceUpdate(roomId: String) {
+        viewModelScope.launch {
+            val user = auth.currentUser ?: return@launch
+            while (_currentRoom.value?.roomId == roomId) {
+                database.child("rooms").child(roomId)
+                    .child("members").child(user.uid)
+                    .child("lastSeen").setValue(System.currentTimeMillis())
+                delay(3000)
+            }
+        }
+    }
+
     fun updatePlaybackState(isPlaying: Boolean, currentTime: Long) {
         val room = _currentRoom.value ?: return
+        if (!shouldUpdateFirebase) return // Don't update during sync
+
         viewModelScope.launch {
             try {
                 val updates = mapOf(
@@ -301,8 +359,24 @@ class KosmiViewModel : ViewModel() {
                     "currentTime" to currentTime
                 )
                 database.child("rooms").child(room.roomId).updateChildren(updates).await()
+                println("DEBUG: Updated Firebase - Playing: $isPlaying, Time: $currentTime")
             } catch (e: Exception) {
                 _error.value = e.message
+            }
+        }
+    }
+
+    // Periodic time update for YouTube (called every 5 seconds)
+    fun updateYouTubeTime(currentTime: Float) {
+        val room = _currentRoom.value ?: return
+        if (room.videoType != "youtube" || !shouldUpdateFirebase) return
+
+        viewModelScope.launch {
+            try {
+                database.child("rooms").child(room.roomId)
+                    .child("currentTime").setValue((currentTime * 1000).toLong())
+            } catch (e: Exception) {
+                // Silently fail for periodic updates
             }
         }
     }
@@ -319,6 +393,8 @@ class KosmiViewModel : ViewModel() {
         exoPlayer?.release()
         exoPlayer = null
         youtubePlayer = null
+        isYoutubePlayerReady = false
+        shouldUpdateFirebase = true
         roomListener = null
         _screen.value = "main"
     }
@@ -337,6 +413,7 @@ class KosmiViewModel : ViewModel() {
                     _rooms.value = roomsList.sortedByDescending { it.createdAt }
                     println("DEBUG: Total public rooms: ${roomsList.size}")
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     println("DEBUG: Error loading public rooms: ${error.message}")
                     _error.value = "Public rooms load error: ${error.message}"
@@ -366,6 +443,7 @@ class KosmiViewModel : ViewModel() {
                     _myRooms.value = roomsList.sortedByDescending { it.createdAt }
                     println("DEBUG: Total my rooms: ${roomsList.size}")
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     println("DEBUG: Error loading my rooms: ${error.message}")
                     _error.value = "My rooms load error: ${error.message}"
@@ -390,7 +468,8 @@ class KosmiViewModel : ViewModel() {
     fun searchUserByEmail(email: String, callback: (UserProfile?) -> Unit) {
         viewModelScope.launch {
             try {
-                val snapshot = database.child("users").orderByChild("email").equalTo(email).get().await()
+                val snapshot =
+                    database.child("users").orderByChild("email").equalTo(email).get().await()
                 val profile = snapshot.children.firstOrNull()?.getValue(UserProfile::class.java)
                 callback(profile)
             } catch (e: Exception) {
@@ -422,9 +501,12 @@ class KosmiViewModel : ViewModel() {
     fun acceptFriendRequest(request: FriendRequest) {
         viewModelScope.launch {
             try {
-                database.child("friend_requests").child(request.requestId).child("status").setValue("accepted").await()
-                database.child("friends").child(request.toUserId).child(request.fromUserId).setValue(true).await()
-                database.child("friends").child(request.fromUserId).child(request.toUserId).setValue(true).await()
+                database.child("friend_requests").child(request.requestId).child("status")
+                    .setValue("accepted").await()
+                database.child("friends").child(request.toUserId).child(request.fromUserId)
+                    .setValue(true).await()
+                database.child("friends").child(request.fromUserId).child(request.toUserId)
+                    .setValue(true).await()
                 fetchFriendRequests()
                 fetchFriends()
             } catch (e: Exception) {
@@ -436,7 +518,8 @@ class KosmiViewModel : ViewModel() {
     fun rejectFriendRequest(request: FriendRequest) {
         viewModelScope.launch {
             try {
-                database.child("friend_requests").child(request.requestId).child("status").setValue("rejected").await()
+                database.child("friend_requests").child(request.requestId).child("status")
+                    .setValue("rejected").await()
                 fetchFriendRequests()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -454,7 +537,13 @@ class KosmiViewModel : ViewModel() {
                     val friendId = child.key ?: return@forEach
                     val friendProfile = database.child("users").child(friendId).get().await()
                     friendProfile.getValue(UserProfile::class.java)?.let { profile ->
-                        friendsList.add(Friend(userId = profile.userId, username = profile.username, photoUrl = profile.photoUrl))
+                        friendsList.add(
+                            Friend(
+                                userId = profile.userId,
+                                username = profile.username,
+                                photoUrl = profile.photoUrl
+                            )
+                        )
                     }
                 }
                 _friends.value = friendsList
@@ -477,11 +566,20 @@ class KosmiViewModel : ViewModel() {
                     }
                     _friendRequests.value = requests
                 }
+
                 override fun onCancelled(error: DatabaseError) {}
             })
     }
 
-    fun setScreen(screen: String) { _screen.value = screen }
-    fun setBottomTab(tab: String) { _bottomTab.value = tab }
-    fun clearError() { _error.value = null }
+    fun setScreen(screen: String) {
+        _screen.value = screen
+    }
+
+    fun setBottomTab(tab: String) {
+        _bottomTab.value = tab
+    }
+
+    fun clearError() {
+        _error.value = null
+    }
 }
