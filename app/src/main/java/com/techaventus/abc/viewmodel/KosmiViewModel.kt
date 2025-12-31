@@ -12,6 +12,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
+import com.techaventus.abc.model.ChatMessage
 import com.techaventus.abc.model.Friend
 import com.techaventus.abc.model.FriendRequest
 import com.techaventus.abc.model.Member
@@ -55,6 +56,9 @@ class KosmiViewModel : ViewModel() {
     private val _currentRoom = MutableStateFlow<RoomData?>(null)
     val currentRoom: StateFlow<RoomData?> = _currentRoom
 
+    private val _roomMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val roomMessages: StateFlow<List<ChatMessage>> = _roomMessages
+
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading
 
@@ -65,6 +69,7 @@ class KosmiViewModel : ViewModel() {
     var youtubePlayer: com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer? =
         null
     private var roomListener: ValueEventListener? = null
+    private var chatListener: ValueEventListener? = null
     private var lastSyncTime = 0L
     var currentYoutubeTime = 0f
     var isYoutubePlayerReady = false
@@ -277,6 +282,18 @@ class KosmiViewModel : ViewModel() {
                     }
                 }
 
+                chatListener = object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val messages = mutableListOf<ChatMessage>()
+                        snapshot.children.forEach { child ->
+                            child.getValue(ChatMessage::class.java)?.let { messages.add(it) }
+                        }
+                        _roomMessages.value = messages.sortedBy { it.timestamp }
+                    }
+                    override fun onCancelled(error: DatabaseError) {}
+                }
+                database.child("messages").child(roomId).addValueEventListener(chatListener!!)
+
                 database.child("rooms").child(roomId).addValueEventListener(roomListener!!)
 
                 val snapshot = database.child("rooms").child(roomId).get().await()
@@ -285,6 +302,44 @@ class KosmiViewModel : ViewModel() {
 
                 // Start presence update
                 startPresenceUpdate(roomId)
+            } catch (e: Exception) {
+                _error.value = e.message
+            }
+        }
+    }
+
+    private fun startPresenceUpdate(roomId: String) {
+        val user = auth.currentUser ?: return
+        viewModelScope.launch {
+            while (_currentRoom.value != null) {
+                try {
+                    database.child("rooms").child(roomId)
+                        .child("members").child(user.uid)
+                        .child("lastSeen").setValue(System.currentTimeMillis())
+                    delay(3000) // Update every 3 seconds
+                } catch (e: Exception) {
+                    // Silently fail
+                }
+            }
+        }
+    }
+
+
+    fun sendRoomMessage(message: String) {
+        val room = _currentRoom.value ?: return
+        val user = auth.currentUser ?: return
+        val profile = _userProfile.value
+
+        viewModelScope.launch {
+            try {
+                val messageId = database.child("messages").child(room.roomId).push().key ?: return@launch
+                val chatMessage = ChatMessage(
+                    messageId = messageId,
+                    senderId = user.uid,
+                    senderName = profile?.username ?: "User",
+                    message = message
+                )
+                database.child("messages").child(room.roomId).child(messageId).setValue(chatMessage).await()
             } catch (e: Exception) {
                 _error.value = e.message
             }
@@ -336,18 +391,6 @@ class KosmiViewModel : ViewModel() {
         }
     }
 
-    private fun startPresenceUpdate(roomId: String) {
-        viewModelScope.launch {
-            val user = auth.currentUser ?: return@launch
-            while (_currentRoom.value?.roomId == roomId) {
-                database.child("rooms").child(roomId)
-                    .child("members").child(user.uid)
-                    .child("lastSeen").setValue(System.currentTimeMillis())
-                delay(3000)
-            }
-        }
-    }
-
     fun updatePlaybackState(isPlaying: Boolean, currentTime: Long) {
         val room = _currentRoom.value ?: return
         if (!shouldUpdateFirebase) return // Don't update during sync
@@ -387,18 +430,22 @@ class KosmiViewModel : ViewModel() {
             roomListener?.let {
                 database.child("rooms").child(room.roomId).removeEventListener(it)
             }
+            chatListener?.let {
+                database.child("messages").child(room.roomId).removeEventListener(it)
+            }
         }
 
         _currentRoom.value = null
+        _roomMessages.value = emptyList() // Clear messages
         exoPlayer?.release()
         exoPlayer = null
         youtubePlayer = null
         isYoutubePlayerReady = false
         shouldUpdateFirebase = true
         roomListener = null
+        chatListener = null
         _screen.value = "main"
     }
-
     fun fetchPublicRooms() {
         database.child("rooms").orderByChild("isPublic").equalTo(true)
             .addValueEventListener(object : ValueEventListener {

@@ -44,3 +44,11 @@ data class Friend(
     val username: String = "",
     val photoUrl: String = ""
 )
+
+data class ChatMessage(
+    val messageId: String = "",
+    val senderId: String = "",
+    val senderName: String = "",
+    val message: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)

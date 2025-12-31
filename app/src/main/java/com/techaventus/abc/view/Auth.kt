@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -180,7 +181,7 @@ fun AuthScreen(viewModel: KosmiViewModel) {
                         onClick = {
                             val gso =
                                 GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                    .requestIdToken("823691126012-6h1kfhfman3ereet31be23o4gqna5ob4.apps.googleusercontent.com") // Firebase WebClient Id
+                                    .requestIdToken("823691126012-6h1kfhfman3ereet31be23o4gqna5ob4.apps.googleusercontent.com") // Web client Id
                                     .requestEmail().build()
                             val googleSignInClient = GoogleSignIn.getClient(context, gso)
                             googleSignInLauncher.launch(googleSignInClient.signInIntent)
