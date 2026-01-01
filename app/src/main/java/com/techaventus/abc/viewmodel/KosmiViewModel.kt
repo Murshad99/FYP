@@ -70,10 +70,9 @@ class KosmiViewModel : ViewModel() {
         null
     private var roomListener: ValueEventListener? = null
     private var chatListener: ValueEventListener? = null
-    private var lastSyncTime = 0L
+    private var isSyncing = false
     var currentYoutubeTime = 0f
     var isYoutubePlayerReady = false
-    private var shouldUpdateFirebase = true // Control when to update Firebase
 
     init {
         if (auth.currentUser != null) {
@@ -85,6 +84,7 @@ class KosmiViewModel : ViewModel() {
             fetchFriendRequests()
         }
     }
+
 
     fun signUp(email: String, password: String, username: String) {
         viewModelScope.launch {
@@ -251,37 +251,74 @@ class KosmiViewModel : ViewModel() {
             try {
                 val user = auth.currentUser ?: return@launch
                 val profile = _userProfile.value
-                database.child("rooms").child(roomId).child("members").child(user.uid)
-                    .setValue(Member(userId = user.uid, username = profile?.username ?: "User"))
-                    .await()
+
+                // Reset state
+                isSyncing = false
+                lastUpdateState = null
+
+                // First get room data
+                val snapshot = database.child("rooms").child(roomId).get().await()
+                val room = snapshot.getValue(RoomData::class.java)
+
+                if (room == null) {
+                    _error.value = "Room not found"
+                    return@launch
+                }
+
+                // Set current room BEFORE adding listener
+                _currentRoom.value = room
+
+                // Add member to room
+                val member = Member(
+                    userId = user.uid,
+                    username = profile?.username ?: "User",
+                    lastSeen = System.currentTimeMillis()
+                )
+
+                database.child("rooms").child(roomId)
+                    .child("members").child(user.uid)
+                    .setValue(member).await()
+
+                println("DEBUG: Joined room - Initial: Playing=${room.isPlaying}, Time=${room.currentTime}")
 
                 // Listen to room state changes for real-time sync
                 roomListener = object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
-                        val room = snapshot.getValue(RoomData::class.java)
+                        val updatedRoom = snapshot.getValue(RoomData::class.java)
                         val oldRoom = _currentRoom.value
-                        _currentRoom.value = room
 
-                        // Only sync if state changed from another user
-                        room?.let { newRoom ->
+                        updatedRoom?.let { newRoom ->
                             if (oldRoom != null) {
-                                // Check if update came from another user
                                 val playStateChanged = oldRoom.isPlaying != newRoom.isPlaying
-                                val timeChanged =
-                                    kotlin.math.abs(oldRoom.currentTime - newRoom.currentTime) > 2000
+                                val timeDiff =
+                                    kotlin.math.abs(oldRoom.currentTime - newRoom.currentTime)
+                                val timeChanged = timeDiff > 3000 // 3 seconds threshold
 
+                                println("DEBUG: Room update - PlayChanged: $playStateChanged, TimeDiff: $timeDiff ms")
+
+                                // Update local state first
+                                _currentRoom.value = newRoom
+
+                                // Only sync if there's a significant change
                                 if (playStateChanged || timeChanged) {
+                                    println("DEBUG: Triggering sync")
                                     syncVideoToState(newRoom)
                                 }
+                            } else {
+                                _currentRoom.value = newRoom
                             }
                         }
                     }
 
                     override fun onCancelled(error: DatabaseError) {
                         _error.value = error.message
+                        println("DEBUG: Room listener cancelled: ${error.message}")
                     }
                 }
 
+                database.child("rooms").child(roomId).addValueEventListener(roomListener!!)
+
+                // Setup chat listener
                 chatListener = object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
                         val messages = mutableListOf<ChatMessage>()
@@ -290,20 +327,19 @@ class KosmiViewModel : ViewModel() {
                         }
                         _roomMessages.value = messages.sortedBy { it.timestamp }
                     }
+
                     override fun onCancelled(error: DatabaseError) {}
                 }
                 database.child("messages").child(roomId).addValueEventListener(chatListener!!)
 
-                database.child("rooms").child(roomId).addValueEventListener(roomListener!!)
-
-                val snapshot = database.child("rooms").child(roomId).get().await()
-                _currentRoom.value = snapshot.getValue(RoomData::class.java)
                 _screen.value = "room"
 
                 // Start presence update
                 startPresenceUpdate(roomId)
+
             } catch (e: Exception) {
                 _error.value = e.message
+                println("DEBUG: Error joining room - ${e.message}")
             }
         }
     }
@@ -313,12 +349,17 @@ class KosmiViewModel : ViewModel() {
         viewModelScope.launch {
             while (_currentRoom.value != null) {
                 try {
+                    val updates = mapOf(
+                        "lastSeen" to System.currentTimeMillis()
+                    )
                     database.child("rooms").child(roomId)
                         .child("members").child(user.uid)
-                        .child("lastSeen").setValue(System.currentTimeMillis())
-                    delay(3000) // Update every 3 seconds
+                        .updateChildren(updates).await()
+
+                    println("DEBUG: Presence updated for user: ${user.uid}")
+                    delay(3000)
                 } catch (e: Exception) {
-                    // Silently fail
+                    println("DEBUG: Presence update failed: ${e.message}")
                 }
             }
         }
@@ -332,14 +373,16 @@ class KosmiViewModel : ViewModel() {
 
         viewModelScope.launch {
             try {
-                val messageId = database.child("messages").child(room.roomId).push().key ?: return@launch
+                val messageId =
+                    database.child("messages").child(room.roomId).push().key ?: return@launch
                 val chatMessage = ChatMessage(
                     messageId = messageId,
                     senderId = user.uid,
                     senderName = profile?.username ?: "User",
                     message = message
                 )
-                database.child("messages").child(room.roomId).child(messageId).setValue(chatMessage).await()
+                database.child("messages").child(room.roomId).child(messageId).setValue(chatMessage)
+                    .await()
             } catch (e: Exception) {
                 _error.value = e.message
             }
@@ -347,53 +390,62 @@ class KosmiViewModel : ViewModel() {
     }
 
     private fun syncVideoToState(room: RoomData) {
-        when (room.videoType) {
-            "youtube" -> {
-                youtubePlayer?.let { player ->
-                    if (!isYoutubePlayerReady) return
+        if (isSyncing) return
 
-                    shouldUpdateFirebase = false // Don't update Firebase during sync
+        viewModelScope.launch {
+            isSyncing = true
 
-                    // Sync time
-                    val targetTime = room.currentTime / 1000f
-                    val timeDiff = kotlin.math.abs(currentYoutubeTime - targetTime)
-                    if (timeDiff > 3) {
-                        player.seekTo(targetTime)
+            when (room.videoType) {
+                "youtube" -> {
+                    youtubePlayer?.let { player ->
+                        if (isYoutubePlayerReady) {
+                            val targetTime = room.currentTime / 1000f
+                            val timeDiff = kotlin.math.abs(currentYoutubeTime - targetTime)
+
+                            if (timeDiff > 5) {
+                                player.seekTo(targetTime)
+                                println("DEBUG: Synced time to $targetTime")
+                            }
+                        }
                     }
+                }
 
-                    // Sync play/pause state
-                    if (room.isPlaying) {
-                        player.play()
-                    } else {
-                        player.pause()
-                    }
-
-                    viewModelScope.launch {
-                        delay(1000)
-                        shouldUpdateFirebase = true // Re-enable Firebase updates
+                else -> {
+                    exoPlayer?.let { player ->
+                        val timeDiff = kotlin.math.abs(player.currentPosition - room.currentTime)
+                        if (timeDiff > 5000) {
+                            player.seekTo(room.currentTime)
+                        }
                     }
                 }
             }
 
-            else -> {
-                exoPlayer?.let { player ->
-                    val timeDiff = kotlin.math.abs(player.currentPosition - room.currentTime)
-                    if (timeDiff > 2000) {
-                        player.seekTo(room.currentTime)
-                    }
-                    if (room.isPlaying && !player.isPlaying) {
-                        player.play()
-                    } else if (!room.isPlaying && player.isPlaying) {
-                        player.pause()
-                    }
-                }
-            }
+            delay(500)
+            isSyncing = false
         }
     }
 
+    private var lastUpdateTime = 0L
+    private var lastUpdateState: Pair<Boolean, Long>? = null // Track last update
+
     fun updatePlaybackState(isPlaying: Boolean, currentTime: Long) {
         val room = _currentRoom.value ?: return
-        if (!shouldUpdateFirebase) return // Don't update during sync
+
+        // Check if state actually changed
+        val lastState = lastUpdateState
+        if (lastState != null && lastState.first == isPlaying && kotlin.math.abs(lastState.second - currentTime) < 1000) {
+            println("DEBUG: State unchanged, skipping update")
+            return
+        }
+
+        // Debouncing: Don't update too frequently
+        val now = System.currentTimeMillis()
+        if (now - lastUpdateTime < 1000) { // Increased to 1 second
+            println("DEBUG: Skipping update (too frequent)")
+            return
+        }
+        lastUpdateTime = now
+        lastUpdateState = Pair(isPlaying, currentTime)
 
         viewModelScope.launch {
             try {
@@ -405,6 +457,7 @@ class KosmiViewModel : ViewModel() {
                 println("DEBUG: Updated Firebase - Playing: $isPlaying, Time: $currentTime")
             } catch (e: Exception) {
                 _error.value = e.message
+                println("DEBUG: Firebase update failed: ${e.message}")
             }
         }
     }
@@ -412,12 +465,18 @@ class KosmiViewModel : ViewModel() {
     // Periodic time update for YouTube (called every 5 seconds)
     fun updateYouTubeTime(currentTime: Float) {
         val room = _currentRoom.value ?: return
-        if (room.videoType != "youtube" || !shouldUpdateFirebase) return
+
+        // Check if time changed significantly
+        val lastTime = (room.currentTime / 1000f)
+        if (kotlin.math.abs(currentTime - lastTime) < 2) { // Less than 2 seconds difference
+            return
+        }
 
         viewModelScope.launch {
             try {
                 database.child("rooms").child(room.roomId)
-                    .child("currentTime").setValue((currentTime * 1000).toLong())
+                    .child("currentTime").setValue((currentTime * 1000).toLong()).await()
+                println("DEBUG: YouTube time updated: $currentTime")
             } catch (e: Exception) {
                 // Silently fail for periodic updates
             }
@@ -435,35 +494,52 @@ class KosmiViewModel : ViewModel() {
             }
         }
 
+        // Reset all state variables
         _currentRoom.value = null
-        _roomMessages.value = emptyList() // Clear messages
+        _roomMessages.value = emptyList()
         exoPlayer?.release()
         exoPlayer = null
         youtubePlayer = null
         isYoutubePlayerReady = false
-        shouldUpdateFirebase = true
+        isSyncing = false
+        lastUpdateState = null
+        lastUpdateTime = 0L
         roomListener = null
         chatListener = null
         _screen.value = "main"
+
+        println("DEBUG: Left room, all state reset")
     }
+
     fun fetchPublicRooms() {
-        database.child("rooms").orderByChild("isPublic").equalTo(true)
+        println("DEBUG: Starting to fetch public rooms")
+
+        database.child("rooms")
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val roomsList = mutableListOf<RoomData>()
+
+                    println("DEBUG: Total rooms in database: ${snapshot.childrenCount}")
+
                     snapshot.children.forEach { child ->
-                        child.getValue(RoomData::class.java)?.let {
-                            roomsList.add(it)
-                            println("DEBUG: Public Room loaded: ${it.roomName}")
+                        val room = child.getValue(RoomData::class.java)
+
+                        println("DEBUG: Room found - Name: ${room?.roomName}, Public: ${room?.isPublic}, Creator: ${room?.creator}")
+
+                        // Only add public rooms
+                        if (room != null && room.isPublic) {
+                            roomsList.add(room)
+                            println("DEBUG: Public Room added: ${room.roomName}")
                         }
                     }
+
                     _rooms.value = roomsList.sortedByDescending { it.createdAt }
-                    println("DEBUG: Total public rooms: ${roomsList.size}")
+                    println("DEBUG: Total public rooms loaded: ${roomsList.size}")
                 }
 
                 override fun onCancelled(error: DatabaseError) {
                     println("DEBUG: Error loading public rooms: ${error.message}")
-                    _error.value = "Public rooms load error: ${error.message}"
+                    _error.value = "Failed to load rooms: ${error.message}"
                 }
             })
     }

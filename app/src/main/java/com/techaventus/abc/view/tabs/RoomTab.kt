@@ -18,8 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
@@ -27,15 +27,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,58 +42,45 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.techaventus.abc.viewmodel.KosmiViewModel
 
-// RoomsTab function ko yeh se replace karo
 @Composable
 fun RoomsTab(viewModel: KosmiViewModel) {
     val rooms by viewModel.rooms.collectAsState()
-    val myRooms by viewModel.myRooms.collectAsState()
-    var showMyRooms by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    // Refresh rooms when tab opens
+    LaunchedEffect(Unit) {
+        viewModel.fetchPublicRooms()
+    }
+
+    Column {
         Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF1E293B)) {
-            Column {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
                     Text(
-                        if (showMyRooms) "My Rooms" else "Public Rooms",
+                        "Public Rooms",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { showMyRooms =! showMyRooms },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (showMyRooms) Color(0xFFEC4899) else Color(
-                                    0xFF475569
-                                )
-                            )
-                        ) {
-                            Icon(Icons.Default.Person, null)
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (showMyRooms) "Public" else "Mine")
-                        }
-                        Button(
-                            onClick = { viewModel.setScreen("create") },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899))
-                        ) {
-                            Icon(Icons.Default.Add, null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Create")
-                        }
-                    }
+                    Text("${rooms.size} rooms available", fontSize = 12.sp, color = Color.Gray)
+                }
+                Button(
+                    onClick = { viewModel.setScreen("create") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899))
+                ) {
+                    Icon(Icons.Default.Add, null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Create")
                 }
             }
         }
 
-        val displayRooms = if (showMyRooms) myRooms else rooms
-
-        if (displayRooms.isEmpty()) {
+        if (rooms.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -109,18 +93,8 @@ fun RoomsTab(viewModel: KosmiViewModel) {
                         tint = Color.Gray
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text(
-                        if (showMyRooms) "No rooms created yet" else "No public rooms available",
-                        color = Color.Gray,
-                        fontSize = 16.sp
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = { viewModel.setScreen("create") },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899))
-                    ) {
-                        Text("Create a Room")
-                    }
+                    Text("No public rooms available", color = Color.Gray, fontSize = 16.sp)
+                    Text("Create one to get started!", color = Color.Gray, fontSize = 12.sp)
                 }
             }
         } else {
@@ -128,11 +102,13 @@ fun RoomsTab(viewModel: KosmiViewModel) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(displayRooms) { room ->
+                items(rooms) { room ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { viewModel.joinRoom(room.roomId) },
+                            .clickable {
+                                viewModel.joinRoom(room.roomId)
+                            },
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
                     ) {
                         Row(
@@ -161,8 +137,8 @@ fun RoomsTab(viewModel: KosmiViewModel) {
                                     Icon(
                                         Icons.Default.Person,
                                         null,
-                                        tint = Color.Green,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(14.dp),
+                                        tint = Color.Green
                                     )
                                     Spacer(Modifier.width(4.dp))
                                     Text(
@@ -172,11 +148,11 @@ fun RoomsTab(viewModel: KosmiViewModel) {
                                     )
                                 }
                             }
-                            if (showMyRooms) {
-                                IconButton(onClick = { viewModel.deleteRoom(room.roomId) }) {
-                                    Icon(Icons.Default.Delete, null, tint = Color.Red)
-                                }
-                            }
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                null,
+                                tint = Color(0xFFEC4899)
+                            )
                         }
                     }
                 }

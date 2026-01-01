@@ -41,6 +41,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.Abs
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
 import com.techaventus.abc.viewmodel.KosmiViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -68,6 +70,7 @@ fun RoomScreen(viewModel: KosmiViewModel) {
     val room by viewModel.currentRoom.collectAsState()
     val messages by viewModel.roomMessages.collectAsState()
     val user by viewModel.user.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
     var isPlayerReady by remember { mutableStateOf(false) }
     var currentYoutubeTime by remember { mutableStateOf(0f) }
     var lastTimeUpdate by remember { mutableStateOf(0L) }
@@ -122,9 +125,15 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                                             val startTime = (room?.currentTime ?: 0) / 1000f
                                             youTubePlayer.cueVideo(videoId, startTime)
 
-                                            if (room?.isPlaying == true) {
-                                                youTubePlayer.play()
+                                            // Wait a bit before playing to ensure sync
+                                            coroutineScope.launch {
+                                                delay(500)
+                                                if (room?.isPlaying == true) {
+                                                    youTubePlayer.play()
+                                                }
                                             }
+
+                                            println("DEBUG: YouTube Player Ready - Video: $videoId, Starting at: ${startTime}s")
                                         }
 
                                         override fun onCurrentSecond(
@@ -135,7 +144,7 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                                             viewModel.currentYoutubeTime = second
 
                                             val now = System.currentTimeMillis()
-                                            if (now - lastTimeUpdate > 5000) {
+                                            if (now - lastTimeUpdate > 3000) { // Update every 3 seconds
                                                 viewModel.updateYouTubeTime(second)
                                                 lastTimeUpdate = now
                                             }
@@ -147,26 +156,35 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                                         ) {
                                             if (!isPlayerReady) return
 
-                                            when (state) {
-                                                com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.PLAYING -> {
-                                                    if (room?.isPlaying == false) {
+                                            println("DEBUG: YouTube State: $state")
+
+                                            // ✅ SIMPLE VERSION - Just update Firebase on any state change
+                                            coroutineScope.launch {
+                                                delay(300)
+
+                                                when (state) {
+                                                    com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.PLAYING -> {
+                                                        println("DEBUG: Playing - updating Firebase")
                                                         viewModel.updatePlaybackState(
                                                             true,
                                                             (currentYoutubeTime * 1000).toLong()
                                                         )
                                                     }
-                                                }
 
-                                                com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.PAUSED -> {
-                                                    if (room?.isPlaying == true) {
+                                                    com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.PAUSED -> {
+                                                        println("DEBUG: Paused - updating Firebase")
                                                         viewModel.updatePlaybackState(
                                                             false,
                                                             (currentYoutubeTime * 1000).toLong()
                                                         )
                                                     }
-                                                }
 
-                                                else -> {}
+                                                    com.pierfrancescosoffritti.androidyoutubeplayer.core.player.PlayerConstants.PlayerState.BUFFERING -> {
+                                                        println("DEBUG: Buffering - ignoring")
+                                                    }
+
+                                                    else -> {}
+                                                }
                                             }
                                         }
                                     })
@@ -214,12 +232,22 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                             .aspectRatio(16f / 9f)
                     )
 
-                    LaunchedEffect(Unit) {
-                        while (true) {
-                            delay(5000)
-                            viewModel.exoPlayer?.let { player ->
-                                if (player.isPlaying) {
-                                    viewModel.updatePlaybackState(true, player.currentPosition)
+
+                    // Replace the ExoPlayer LaunchedEffect with this:
+                    LaunchedEffect(room?.videoType) {
+                        if (room?.videoType != "youtube") {
+                            while (true) {
+                                delay(5000)
+                                viewModel.exoPlayer?.let { player ->
+                                    val currentPos = player.currentPosition
+                                    val isPlaying = player.isPlaying
+
+                                    println("DEBUG: ExoPlayer periodic check - Playing: $isPlaying, Position: $currentPos")
+
+                                    // Only update if playing AND position changed significantly
+                                    if (isPlaying) {
+                                        viewModel.updatePlaybackState(isPlaying, currentPos)
+                                    }
                                 }
                             }
                         }
@@ -235,19 +263,27 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = {
+                        println("DEBUG: Manual button clicked")
                         when (room?.videoType) {
                             "youtube" -> {
                                 viewModel.youtubePlayer?.let { player ->
                                     val newIsPlaying = !(room?.isPlaying ?: false)
+                                    println("DEBUG: Manual YouTube play/pause - New state: $newIsPlaying")
+
+                                    // Update Firebase first
                                     viewModel.updatePlaybackState(
                                         newIsPlaying,
                                         (currentYoutubeTime * 1000).toLong()
                                     )
 
-                                    if (newIsPlaying) {
-                                        player.play()
-                                    } else {
-                                        player.pause()
+                                    // Then update local player
+                                    coroutineScope.launch {
+                                        delay(200) // Small delay to let Firebase update propagate
+                                        if (newIsPlaying) {
+                                            player.play()
+                                        } else {
+                                            player.pause()
+                                        }
                                     }
                                 }
                             }
@@ -255,15 +291,20 @@ fun RoomScreen(viewModel: KosmiViewModel) {
                             else -> {
                                 viewModel.exoPlayer?.let { player ->
                                     val newIsPlaying = !player.isPlaying
+                                    println("DEBUG: Manual ExoPlayer play/pause - New state: $newIsPlaying")
+
+                                    // Update Firebase first
+                                    viewModel.updatePlaybackState(
+                                        newIsPlaying,
+                                        player.currentPosition
+                                    )
+
+                                    // Then update local player
                                     if (newIsPlaying) {
                                         player.play()
                                     } else {
                                         player.pause()
                                     }
-                                    viewModel.updatePlaybackState(
-                                        newIsPlaying,
-                                        player.currentPosition
-                                    )
                                 }
                             }
                         }
