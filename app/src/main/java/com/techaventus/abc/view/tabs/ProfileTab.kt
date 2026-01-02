@@ -23,10 +23,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.techaventus.abc.viewmodel.KosmiViewModel
+import com.techaventus.abc.viewmodel.VM
 
 @Composable
-fun ProfileTab(viewModel: KosmiViewModel) {
+fun ProfileTab(viewModel: VM) {
     val profile by viewModel.userProfile.collectAsState()
     Column(modifier = Modifier
         .fillMaxSize()

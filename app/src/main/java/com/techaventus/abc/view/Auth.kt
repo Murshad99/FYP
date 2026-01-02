@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
-import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -48,11 +47,11 @@ import androidx.compose.ui.unit.sp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
-import com.techaventus.abc.viewmodel.KosmiViewModel
+import com.techaventus.abc.viewmodel.VM
 
 // Auth Screen
 @Composable
-fun AuthScreen(viewModel: KosmiViewModel) {
+fun AuthScreen(viewModel: VM) {
     val context = LocalContext.current
     var isSignUp by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf("") }
@@ -99,7 +98,7 @@ fun AuthScreen(viewModel: KosmiViewModel) {
                 tint = Color(0xFFEC4899)
             )
             Text(
-                "Kosmi Clone",
+                "WatchTogether",
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,

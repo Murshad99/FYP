@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -32,25 +31,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.techaventus.abc.viewmodel.KosmiViewModel
+import com.techaventus.abc.viewmodel.VM
 
 @Composable
-fun CreateRoomScreen(viewModel: KosmiViewModel) {
+fun CreateRoomScreen(viewModel: VM) {
     var roomName by remember { mutableStateOf("") }
-    var videoUrl by remember { mutableStateOf("") }
     var isPublic by remember { mutableStateOf(true) }
 
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .background(Color(0xFF0F172A))) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F172A))
+    ) {
         Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF1E293B)) {
-            Row(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(16.dp)
+            ) {
                 IconButton(onClick = { viewModel.setScreen("main") }) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        null,
-                        tint = Color.White
-                    )
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
                 }
                 Text(
                     "Create Room",
@@ -60,6 +59,7 @@ fun CreateRoomScreen(viewModel: KosmiViewModel) {
                 )
             }
         }
+
         Column(
             modifier = Modifier.padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -74,36 +74,20 @@ fun CreateRoomScreen(viewModel: KosmiViewModel) {
                     unfocusedTextColor = Color.White
                 )
             )
-            OutlinedTextField(
-                videoUrl,
-                { videoUrl = it },
-                label = { Text("Video URL") },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
-                )
-            )
-
-            Text(
-                "Supported: YouTube links or direct MP4 URLs",
-                fontSize = 12.sp,
-                color = Color.Gray,
-                modifier = Modifier.padding(top = 4.dp)
-            )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(isPublic, { isPublic = it })
                 Spacer(Modifier.width(8.dp))
                 Text("Public Room", color = Color.White)
             }
+
             Button(
-                onClick = { viewModel.createRoom(roomName, videoUrl, isPublic) },
+                onClick = { viewModel.createRoom(roomName, isPublic) },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = roomName.isNotBlank() && videoUrl.isNotBlank(),
+                enabled = roomName.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899))
             ) {
-                Text("Create")
+                Text("Create Room")
             }
         }
     }

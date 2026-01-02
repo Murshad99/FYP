@@ -15,7 +15,7 @@ data class RoomData(
     val roomId: String = "",
     val roomName: String = "",
     val videoUrl: String = "",
-    val videoType: String = "url", // "url" or "youtube"
+    val videoType: String = "none", // "url" or "youtube"
     val currentTime: Long = 0,
     val isPlaying: Boolean = false,
     val isPublic: Boolean = true,

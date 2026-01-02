@@ -14,10 +14,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.techaventus.abc.viewmodel.KosmiViewModel
+import com.techaventus.abc.viewmodel.VM
 
 @Composable
-fun NotificationsTab(viewModel: KosmiViewModel) {
+fun NotificationsTab(viewModel: VM) {
     Column {
         Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF1E293B)) {
             Text(
@@ -29,7 +29,7 @@ fun NotificationsTab(viewModel: KosmiViewModel) {
             )
         }
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Koi notification nahi", color = Color.Gray)
+            Text("No Notifications Yet...", color = Color.Gray)
         }
     }
 }

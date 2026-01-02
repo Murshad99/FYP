@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -30,13 +29,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.techaventus.abc.viewmodel.KosmiViewModel
+import com.techaventus.abc.viewmodel.VM
 
 @Composable
-fun EditProfileScreen(viewModel: KosmiViewModel) {
+fun EditProfileScreen(viewModel: VM) {
     val profile by viewModel.userProfile.collectAsState()
     var username by remember { mutableStateOf(profile?.username ?: "") }
     var bio by remember { mutableStateOf(profile?.bio ?: "") }
+    var password by remember { mutableStateOf(profile?.password ?: "") }
 
     Column(modifier = Modifier
         .fillMaxSize()
@@ -85,8 +85,18 @@ fun EditProfileScreen(viewModel: KosmiViewModel) {
                     unfocusedTextColor = Color.White
                 )
             )
+            OutlinedTextField(
+                password,
+                { password = it },
+                label = { Text("password") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                )
+            )
             Button(
-                onClick = { viewModel.updateProfile(username, bio) },
+                onClick = { viewModel.updateProfile(username, bio, password) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899))
             ) {

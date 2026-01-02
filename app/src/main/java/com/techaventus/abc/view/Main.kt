@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
@@ -23,11 +22,11 @@ import com.techaventus.abc.view.tabs.ChatsTab
 import com.techaventus.abc.view.tabs.NotificationsTab
 import com.techaventus.abc.view.tabs.ProfileTab
 import com.techaventus.abc.view.tabs.RoomsTab
-import com.techaventus.abc.viewmodel.KosmiViewModel
+import com.techaventus.abc.viewmodel.VM
 
 // Main Screen
 @Composable
-fun MainScreen(viewModel: KosmiViewModel) {
+fun MainScreen(viewModel: VM) {
     val bottomTab by viewModel.bottomTab.collectAsState()
 
     Scaffold(
