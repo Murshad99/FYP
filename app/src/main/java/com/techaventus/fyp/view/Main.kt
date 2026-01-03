@@ -1,4 +1,4 @@
-package com.techaventus.abc.view
+package com.techaventus.fyp.view
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -18,11 +18,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.techaventus.abc.view.tabs.ChatsTab
-import com.techaventus.abc.view.tabs.NotificationsTab
-import com.techaventus.abc.view.tabs.ProfileTab
-import com.techaventus.abc.view.tabs.RoomsTab
-import com.techaventus.abc.viewmodel.VM
+import com.techaventus.fyp.view.tabs.ChatsTab
+import com.techaventus.fyp.view.tabs.NotificationsTab
+import com.techaventus.fyp.view.tabs.ProfileTab
+import com.techaventus.fyp.view.tabs.RoomsTab
+import com.techaventus.fyp.viewmodel.VM
 
 // Main Screen
 @Composable

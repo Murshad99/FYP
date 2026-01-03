@@ -1,4 +1,4 @@
-package com.techaventus.abc.view.tabs
+package com.techaventus.fyp.view.tabs
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,9 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.techaventus.abc.model.Friend
-import com.techaventus.abc.model.UserProfile
-import com.techaventus.abc.viewmodel.VM
+import com.techaventus.fyp.model.Friend
+import com.techaventus.fyp.model.UserProfile
+import com.techaventus.fyp.viewmodel.VM
 
 @Composable
 fun ChatsTab(viewModel: VM) {

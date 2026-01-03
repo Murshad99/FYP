@@ -1,4 +1,4 @@
-package com.techaventus.abc.ui.theme
+package com.techaventus.fyp.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

@@ -1,13 +1,13 @@
-package com.techaventus.abc
+package com.techaventus.fyp
 
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.techaventus.abc.ui.theme.AbcTheme
-import com.techaventus.abc.view.App
-import com.techaventus.abc.viewmodel.VM
+import com.techaventus.fyp.ui.theme.AbcTheme
+import com.techaventus.fyp.view.App
+import com.techaventus.fyp.viewmodel.VM
 
 
 val viewModel: VM = VM()

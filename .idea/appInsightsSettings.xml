@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.techaventus.abc" />
-                  <option name="mobileSdkAppId" value="1:823691126012:android:9033501ef652ee10e2a379" />
-                  <option name="projectId" value="abcd-8e5c9" />
-                  <option name="projectNumber" value="823691126012" />
+                  <option name="appId" value="PLACEHOLDER" />
+                  <option name="mobileSdkAppId" value="" />
+                  <option name="projectId" value="" />
+                  <option name="projectNumber" value="" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

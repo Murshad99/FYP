@@ -1,4 +1,4 @@
-package com.techaventus.abc.view
+package com.techaventus.fyp.view
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
-import com.techaventus.abc.viewmodel.VM
+import com.techaventus.fyp.viewmodel.VM
 
 // Auth Screen
 @Composable
@@ -180,7 +180,7 @@ fun AuthScreen(viewModel: VM) {
                         onClick = {
                             val gso =
                                 GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                    .requestIdToken("823691126012-6h1kfhfman3ereet31be23o4gqna5ob4.apps.googleusercontent.com") // Web client Id
+                                    .requestIdToken("446106643298-o0mvtk00i63km9v4jr60c9u4ghkj7ltm.apps.googleusercontent.com") // Web client Id
                                     .requestEmail().build()
                             val googleSignInClient = GoogleSignIn.getClient(context, gso)
                             googleSignInLauncher.launch(googleSignInClient.signInIntent)

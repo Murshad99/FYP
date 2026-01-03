@@ -1,4 +1,4 @@
-package com.techaventus.abc.view
+package com.techaventus.fyp.view
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.techaventus.abc.viewmodel.VM
+import com.techaventus.fyp.viewmodel.VM
 
 @Composable
 fun EditProfileScreen(viewModel: VM) {

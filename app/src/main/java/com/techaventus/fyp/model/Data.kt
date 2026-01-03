@@ -1,4 +1,4 @@
-package com.techaventus.abc.model
+package com.techaventus.fyp.model
 
 // Data Models
 data class UserProfile(
@@ -18,7 +18,7 @@ data class RoomData(
     val videoType: String = "none", // "url" or "youtube"
     val currentTime: Long = 0,
     val isPlaying: Boolean = false,
-    val isPublic: Boolean = true,
+    val isPublic: Boolean = false,
     val creator: String = "",
     val creatorId: String = "",
     val members: Map<String, Member> = emptyMap(),

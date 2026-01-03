@@ -1,4 +1,4 @@
-package com.techaventus.abc.view.tabs
+package com.techaventus.fyp.view.tabs
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.techaventus.abc.viewmodel.VM
+import com.techaventus.fyp.viewmodel.VM
 
 @Composable
 fun NotificationsTab(viewModel: VM) {

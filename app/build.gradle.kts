@@ -6,13 +6,13 @@ plugins {
 }
 
 android {
-    namespace = "com.techaventus.abc"
+    namespace = "com.techaventus.fyp"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "com.techaventus.abc"
+        applicationId = "com.techaventus.fyp"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

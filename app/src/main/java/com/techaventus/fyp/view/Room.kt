@@ -1,4 +1,6 @@
-package com.techaventus.abc.view
+@file:kotlin.OptIn(ExperimentalMaterial3Api::class)
+
+package com.techaventus.fyp.view
 
 import android.content.Intent
 import androidx.annotation.OptIn
@@ -38,6 +40,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -45,6 +48,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -71,7 +76,7 @@ import androidx.media3.ui.PlayerView
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.YouTubePlayer
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.listeners.AbstractYouTubePlayerListener
 import com.pierfrancescosoffritti.androidyoutubeplayer.core.player.views.YouTubePlayerView
-import com.techaventus.abc.viewmodel.VM
+import com.techaventus.fyp.viewmodel.VM
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -118,6 +123,46 @@ fun RoomScreen(viewModel: VM) {
             .fillMaxSize()
             .background(Color.Black)
     ) {
+        TopAppBar(
+            title = { Text("Room") },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Black,
+                titleContentColor = Color.White
+            ),
+            actions = {
+                IconButton(onClick = {
+                    room?.let { currentRoom ->
+                        val link = viewModel.getJoinRoomLink(currentRoom.roomId)
+
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(
+                                Intent.EXTRA_TEXT, "Join my room 👇\n$link"
+                            )
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Share Room"))
+                    }
+                }) {
+                    Icon(
+                        Icons.Default.Share,
+                        contentDescription = "Share",
+                        tint = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                IconButton(onClick = { viewModel.leaveRoom() }){
+                    Icon(
+                        Icons.AutoMirrored.Filled.ExitToApp,
+                        null,
+                        tint = Color.Red,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+
+        )
         // Video Player or Media Selector
         Box(
             modifier = Modifier
@@ -276,26 +321,6 @@ fun RoomScreen(viewModel: VM) {
                     }
                 }
 
-                val context = LocalContext.current
-                IconButton(onClick = {
-                    room?.let { currentRoom ->
-                        val link = viewModel.getJoinRoomLink(currentRoom.roomId)
-
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(
-                                Intent.EXTRA_TEXT, "Join my room 👇\n$link"
-                            )
-                        }
-                        context.startActivity(Intent.createChooser(intent, "Share Room"))
-                    }
-                }) {
-                    Icon(
-                        Icons.Default.Share,
-                        contentDescription = "Share",
-                        tint = Color.White
-                    )
-                }
 
                 // Change Media button
                 if (room?.videoType != "none" && !room?.videoUrl.isNullOrEmpty()) {
@@ -315,15 +340,6 @@ fun RoomScreen(viewModel: VM) {
                         "Toggle Chat",
                         tint = if (showChat) Color(0xFFEC4899) else Color.White,
                         modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                IconButton(onClick = { viewModel.leaveRoom() }) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ExitToApp,
-                        null,
-                        tint = Color.Red,
-                        modifier = Modifier.size(28.dp)
                     )
                 }
             }

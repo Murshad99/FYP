@@ -1,4 +1,4 @@
-package com.techaventus.abc.view.tabs
+package com.techaventus.fyp.view.tabs
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -48,35 +49,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.techaventus.abc.viewmodel.VM
+import com.techaventus.fyp.viewmodel.VM
 
 @Composable
 fun RoomsTab(viewModel: VM) {
     val rooms by viewModel.rooms.collectAsState()
+    val myRooms by viewModel.myRooms.collectAsState()
+    var selectedTab by remember { mutableStateOf("public") }
     var showCreateRoomDialog by remember { mutableStateOf(false) }
     var showJoinRoomDialog by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf("") }
 
-
     // Refresh rooms when tab opens
     LaunchedEffect(Unit) {
         viewModel.fetchPublicRooms()
+        viewModel.fetchMyRooms()
     }
 
-
     if (showCreateRoomDialog) {
-        Dialog(
-            onDismissRequest = { showCreateRoomDialog = false }
-        ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF1E293B)
-            ) {
+        Dialog(onDismissRequest = { showCreateRoomDialog = false }) {
+            Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFF1E293B)) {
                 Column(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-
                     Text(
                         "Room Options",
                         fontSize = 18.sp,
@@ -97,9 +93,7 @@ fun RoomsTab(viewModel: VM) {
                     }
 
                     Button(
-                        onClick = {
-                            showJoinRoomDialog = true
-                        },
+                        onClick = { showJoinRoomDialog = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Login, null)
@@ -111,21 +105,13 @@ fun RoomsTab(viewModel: VM) {
         }
     }
 
-
-
     if (showJoinRoomDialog) {
-        Dialog(
-            onDismissRequest = { showJoinRoomDialog = false }
-        ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF1E293B)
-            ) {
+        Dialog(onDismissRequest = { showJoinRoomDialog = false }) {
+            Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFF1E293B)) {
                 Column(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-
                     Text(
                         "Join Room",
                         fontSize = 18.sp,
@@ -162,52 +148,81 @@ fun RoomsTab(viewModel: VM) {
     }
 
     Column {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(),
-            color = Color(0xFF1E293B)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        "Rooms",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        "${rooms.size} rooms available",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-                }
-                IconButton(
-                    onClick = { showCreateRoomDialog = true },
+        Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF1E293B)) {
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.Add,
-                        null,
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
+                    Column {
+                        Text(
+                            "Rooms",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            if (selectedTab == "public") "${rooms.size} public rooms" else "${myRooms.size} my rooms",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    IconButton(onClick = { showCreateRoomDialog = true }) {
+                        Icon(
+                            Icons.Default.Add,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                }
+
+                // Tab Selector
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { selectedTab = "public" },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedTab == "public") Color(0xFFEC4899) else Color(
+                                0xFF334155
+                            )
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Public")
+                    }
+                    Button(
+                        onClick = { selectedTab = "myrooms" },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedTab == "myrooms") Color(0xFFEC4899) else Color(
+                                0xFF334155
+                            )
+                        ),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("My Rooms")
+                    }
                 }
             }
         }
 
-        if (rooms.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+        // Display rooms based on selected tab
+        val currentUserId = viewModel.currentUserId
+        val displayRooms =
+            if (selectedTab == "public") rooms.filter { it.isPublic }
+            else myRooms.filter { it.creatorId == currentUserId }
+
+        if (displayRooms.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
                         Icons.Default.Videocam,
                         null,
@@ -216,12 +231,12 @@ fun RoomsTab(viewModel: VM) {
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        "No public rooms available",
+                        if (selectedTab == "public") "No public rooms available" else "No rooms created yet",
                         color = Color.Gray,
                         fontSize = 16.sp
                     )
                     Text(
-                        "Create one to get started!",
+                        if (selectedTab == "public") "Create one to get started!" else "Create your first room!",
                         color = Color.Gray,
                         fontSize = 12.sp
                     )
@@ -232,13 +247,11 @@ fun RoomsTab(viewModel: VM) {
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(rooms) { room ->
+                items(displayRooms) { room ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
-                                viewModel.joinRoom(room.roomId)
-                            },
+                            .clickable { viewModel.joinRoom(room.roomId) },
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B))
                     ) {
                         Row(
@@ -252,30 +265,40 @@ fun RoomsTab(viewModel: VM) {
                                     .background(Color(0xFFEC4899)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    Icons.Default.Videocam,
-                                    null, tint = Color.White
-                                )
+                                Icon(Icons.Default.Videocam, null, tint = Color.White)
                             }
                             Spacer(Modifier.width(16.dp))
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                            ) {
-                                Text(
-                                    room.roomName,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    "by ${room.creator}",
-                                    fontSize = 14.sp,
-                                    color = Color.Gray
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        room.roomName,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+
+                                    // Show private badge
+                                    Surface(
+                                        color = if (room.isPublic) Color(0xFF10B981) else Color(
+                                            0xFFEF4444
+                                        ),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            if (room.isPublic) "Public" else "Private",
+                                            modifier = Modifier.padding(
+                                                horizontal = 6.dp,
+                                                vertical = 2.dp
+                                            ),
+                                            fontSize = 10.sp,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                }
+                                Text("by ${room.creator}", fontSize = 14.sp, color = Color.Gray)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         Icons.Default.Person,
                                         null,
@@ -290,12 +313,10 @@ fun RoomsTab(viewModel: VM) {
                                     )
                                 }
                             }
-                            if (room.creatorId == viewModel.currentUserId) {
-                                IconButton(
-                                    onClick = {
-                                        viewModel.deleteRoom(room.roomId)
-                                    }
-                                ) {
+
+                            // Show delete button only in My Rooms tab
+                            if (displayRooms.contains(room)) {
+                                IconButton(onClick = { viewModel.deleteRoom(room.roomId) }) {
                                     Icon(
                                         Icons.Default.Delete,
                                         contentDescription = "Delete Room",
