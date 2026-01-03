@@ -1,4 +1,4 @@
-package com.techaventus.abc.viewmodel
+package com.techaventus.fyp.viewmodel
 
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
@@ -11,14 +11,16 @@ import com.google.firebase.auth.auth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.ServerValue
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
-import com.techaventus.abc.model.ChatMessage
-import com.techaventus.abc.model.Friend
-import com.techaventus.abc.model.FriendRequest
-import com.techaventus.abc.model.Member
-import com.techaventus.abc.model.RoomData
-import com.techaventus.abc.model.UserProfile
+import com.techaventus.fyp.model.ChatMessage
+import com.techaventus.fyp.model.ChatSummary
+import com.techaventus.fyp.model.Friend
+import com.techaventus.fyp.model.FriendRequest
+import com.techaventus.fyp.model.Member
+import com.techaventus.fyp.model.RoomData
+import com.techaventus.fyp.model.UserProfile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,17 +31,13 @@ class VM : ViewModel() {
 
     private val _currentFriendChat = MutableStateFlow<Friend?>(null)
     val currentFriendChat: StateFlow<Friend?> = _currentFriendChat
-
     private val _friendChatMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val friendChatMessages: StateFlow<List<ChatMessage>> = _friendChatMessages
-
     private var friendChatListener: ValueEventListener? = null
     private val auth: FirebaseAuth = Firebase.auth
     private val database: DatabaseReference = Firebase.database.reference
-
     private val _screen = MutableStateFlow("auth")
     val screen: StateFlow<String> = _screen
-
     private val _bottomTab = MutableStateFlow("rooms")
     val bottomTab: StateFlow<String> = _bottomTab
     private val _user = MutableStateFlow(auth.currentUser)
@@ -68,6 +66,9 @@ class VM : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    private val _chatSummaries = MutableStateFlow<List<ChatSummary>>(emptyList())
+    val chatSummaries: StateFlow<List<ChatSummary>> = _chatSummaries
+
     var exoPlayer: ExoPlayer? = null
     var youtubePlayer: com.pierfrancescosoffritti.
     androidyoutubeplayer.core.player.
@@ -89,6 +90,8 @@ class VM : ViewModel() {
             fetchMyRooms()
             fetchFriends()
             fetchFriendRequests()
+            initFriendsListener()
+            fetchChatSummaries()
         }
     }
 
@@ -221,8 +224,8 @@ class VM : ViewModel() {
                 val room = RoomData(
                     roomId = roomId,
                     roomName = roomName,
-                    videoUrl = "", //  Empty initially
-                    videoType = "none", //  No video yet
+                    videoUrl = "", // Empty initially
+                    videoType = "none", // No video yet
                     isPublic = isPublic,
                     creator = profile?.username ?: "User",
                     creatorId = user.uid,
@@ -235,6 +238,7 @@ class VM : ViewModel() {
                 )
 
                 database.child("rooms").child(roomId).setValue(room).await()
+                fetchPublicRooms()
                 fetchMyRooms()
                 joinRoom(roomId)
             } catch (e: Exception) {
@@ -347,16 +351,12 @@ class VM : ViewModel() {
                     database.child("rooms").child(roomId)
                         .child("members").child(user.uid)
                         .updateChildren(updates).await()
-
-                    println("DEBUG: Presence updated for user: ${user.uid}")
                     delay(3000)
                 } catch (e: Exception) {
-                    println("DEBUG: Presence update failed: ${e.message}")
                 }
             }
         }
     }
-
 
     fun sendRoomMessage(message: String) {
         val room = _currentRoom.value ?: return
@@ -396,7 +396,6 @@ class VM : ViewModel() {
 
                             if (timeDiff > 5) {
                                 player.seekTo(targetTime)
-                                println("DEBUG: Synced time to $targetTime")
                             }
                         }
                     }
@@ -423,14 +422,12 @@ class VM : ViewModel() {
         // Check if state actually changed
         val lastState = lastUpdateState
         if (lastState != null && lastState.first == isPlaying && kotlin.math.abs(lastState.second - currentTime) < 1000) {
-            println("DEBUG: State unchanged, skipping update")
             return
         }
 
         // Debouncing: Don't update too frequently
         val now = System.currentTimeMillis()
         if (now - lastUpdateTime < 1000) { // Increased to 1 second
-            println("DEBUG: Skipping update (too frequent)")
             return
         }
         lastUpdateTime = now
@@ -443,31 +440,8 @@ class VM : ViewModel() {
                     "currentTime" to currentTime
                 )
                 database.child("rooms").child(room.roomId).updateChildren(updates).await()
-                println("DEBUG: Updated Firebase - Playing: $isPlaying, Time: $currentTime")
             } catch (e: Exception) {
                 _error.value = e.message
-                println("DEBUG: Firebase update failed: ${e.message}")
-            }
-        }
-    }
-
-    // Periodic time update for YouTube (called every 5 seconds)
-    fun updateYouTubeTime(currentTime: Float) {
-        val room = _currentRoom.value ?: return
-
-        // Check if time changed significantly
-        val lastTime = (room.currentTime / 1000f)
-        if (kotlin.math.abs(currentTime - lastTime) < 2) { // Less than 2 seconds difference
-            return
-        }
-
-        viewModelScope.launch {
-            try {
-                database.child("rooms").child(room.roomId)
-                    .child("currentTime").setValue((currentTime * 1000).toLong()).await()
-                println("DEBUG: YouTube time updated: $currentTime")
-            } catch (e: Exception) {
-                // Silently fail for periodic updates
             }
         }
     }
@@ -496,91 +470,73 @@ class VM : ViewModel() {
         roomListener = null
         chatListener = null
         _screen.value = "main"
-
-        println("DEBUG: Left room, all state reset")
     }
 
     fun fetchPublicRooms() {
-        println("DEBUG: Starting to fetch public rooms")
-
         database.child("rooms")
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val roomsList = mutableListOf<RoomData>()
-
-                    println("DEBUG: Total rooms in database: ${snapshot.childrenCount}")
-
                     snapshot.children.forEach { child ->
                         val room = child.getValue(RoomData::class.java)
-
-                        println("DEBUG: Room found - Name: ${room?.roomName}, Public: ${room?.isPublic}, Creator: ${room?.creator}")
-
-                        // Only add public rooms
                         if (room != null && room.isPublic) {
                             roomsList.add(room)
-                            println("DEBUG: Public Room added: ${room.roomName}")
                         }
                     }
-
                     _rooms.value = roomsList.sortedByDescending { it.createdAt }
-                    println("DEBUG: Total public rooms loaded: ${roomsList.size}")
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    println("DEBUG: Error loading public rooms: ${error.message}")
                     _error.value = "Failed to load rooms: ${error.message}"
                 }
-            })
+            }
+            )
     }
 
     fun fetchMyRooms() {
         val user = auth.currentUser ?: return
-        println("DEBUG: Fetching rooms for user: ${user.uid}")
-
         database.child("rooms").orderByChild("creatorId").equalTo(user.uid)
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val roomsList = mutableListOf<RoomData>()
-                    println("DEBUG: Snapshot exists: ${snapshot.exists()}")
-                    println("DEBUG: Snapshot children count: ${snapshot.childrenCount}")
-
                     snapshot.children.forEach { child ->
                         val room = child.getValue(RoomData::class.java)
-                        println("DEBUG: Room data: $room")
-                        room?.let {
-                            roomsList.add(it)
-                            println("DEBUG: My Room loaded: ${it.roomName} by ${it.creator}")
-                        }
+                        room?.let { roomsList.add(it) }
                     }
                     _myRooms.value = roomsList.sortedByDescending { it.createdAt }
-                    println("DEBUG: Total my rooms: ${roomsList.size}")
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    println("DEBUG: Error loading my rooms: ${error.message}")
                     _error.value = "My rooms load error: ${error.message}"
                 }
             })
     }
 
-
     val currentUserId: String?
         get() = FirebaseAuth.getInstance().currentUser?.uid
 
     fun deleteRoom(roomId: String) {
-
-        val room = rooms.value.find { it.roomId == roomId } ?: return
-
-        if (room.creatorId != currentUserId) {
-            _error.value = "You are not allowed to delete this room"
-            return
-        }
+        val userId = auth.currentUser?.uid ?: return
 
         viewModelScope.launch {
             try {
                 _loading.value = true
+
+                val snapshot = database.child("rooms").child(roomId).get().await()
+                val room = snapshot.getValue(RoomData::class.java)
+
+                if (room == null) {
+                    _error.value = "Room already deleted"
+                    return@launch
+                }
+
+                if (room.creatorId != userId) {
+                    _error.value = "You are not allowed to delete this room"
+                    return@launch
+                }
+
                 database.child("rooms").child(roomId).removeValue().await()
-                fetchMyRooms()
+
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
@@ -612,7 +568,6 @@ class VM : ViewModel() {
             }
         }
     }
-
 
     fun sendFriendRequest(toUserId: String) {
         viewModelScope.launch {
@@ -700,7 +655,6 @@ class VM : ViewModel() {
             })
     }
 
-
     fun fetchFriendRequests() {
         val user = auth.currentUser ?: return
         database.child("friend_requests").orderByChild("toUserId").equalTo(user.uid)
@@ -719,6 +673,34 @@ class VM : ViewModel() {
             })
     }
 
+    fun initFriendsListener() {
+        val user = auth.currentUser ?: return
+        database.child("friends").child(user.uid)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    viewModelScope.launch {
+                        val friendsList = mutableListOf<Friend>()
+                        snapshot.children.forEach { child ->
+                            val friendId = child.key ?: return@forEach
+                            val userSnapshot = database.child("users").child(friendId).get().await()
+                            userSnapshot.getValue(UserProfile::class.java)?.let { profile ->
+                                friendsList.add(
+                                    Friend(
+                                        userId = profile.userId,
+                                        username = profile.username,
+                                        photoUrl = profile.photoUrl
+                                    )
+                                )
+                            }
+                        }
+                        _friends.value = friendsList
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {}
+            })
+    }
+
     fun setScreen(screen: String) {
         _screen.value = screen
     }
@@ -728,7 +710,7 @@ class VM : ViewModel() {
     }
 
     fun getJoinRoomLink(roomId: String): String {
-        return "https://abcapp.com/join?roomId=$roomId"
+        return "https://watchtogether.com/join?roomId=$roomId"
     }
 
     fun extractRoomIdFromUrl(url: String): String? {
@@ -740,7 +722,6 @@ class VM : ViewModel() {
         }
     }
 
-
     fun getFriendRoomId(friend: Friend): String {
         val currentUser = currentUserId ?: return ""
         return listOf(currentUser, friend.userId).sorted().joinToString("_")
@@ -748,6 +729,15 @@ class VM : ViewModel() {
 
     fun joinFriendChat(friend: Friend) {
         val roomId = getFriendRoomId(friend)
+        val chatId = getFriendRoomId(friend)
+        val userId = auth.currentUser?.uid ?: return
+
+        // unread reset
+        database.child("chat_summaries")
+            .child(userId)
+            .child(chatId)
+            .child("unreadCount")
+            .setValue(0)
 
         viewModelScope.launch {
             try {
@@ -779,25 +769,58 @@ class VM : ViewModel() {
         val friend = _currentFriendChat.value ?: return
         val user = auth.currentUser ?: return
         val profile = _userProfile.value ?: return
-        val roomId = getFriendRoomId(friend)
+
+        val chatId = getFriendRoomId(friend)
 
         viewModelScope.launch {
-            try {
-                val messageId =
-                    database.child("friend_chats").child(roomId).push().key ?: return@launch
-                val chatMessage = ChatMessage(
-                    messageId = messageId,
-                    senderId = user.uid,
-                    senderName = profile.username,
-                    message = message,
-                    timestamp = System.currentTimeMillis()
-                )
-                database.child("friend_chats").child(roomId).child(messageId)
-                    .setValue(chatMessage).await()
-            } catch (e: Exception) {
-                _error.value = e.message
-            }
+            val messageId = database.child("friend_chats").child(chatId).push().key ?: return@launch
+
+            val chatMessage = ChatMessage(
+                messageId = messageId,
+                senderId = user.uid,
+                senderName = profile.username,
+                message = message,
+                timestamp = System.currentTimeMillis()
+            )
+
+            database.child("friend_chats")
+                .child(chatId)
+                .child(messageId)
+                .setValue(chatMessage)
+                .await()
+
+            // UPDATE CHAT SUMMARY FOR FRIEND (unread +1)
+            val summaryForFriend = mapOf(
+                "chatId" to chatId,
+                "friendId" to user.uid,
+                "friendName" to profile.username,
+                "lastMessage" to message,
+                "lastTimestamp" to chatMessage.timestamp,
+                "unreadCount" to ServerValue.increment(1)
+            )
+
+            database.child("chat_summaries")
+                .child(friend.userId)
+                .child(chatId)
+                .updateChildren(summaryForFriend)
         }
+    }
+
+    fun fetchChatSummaries() {
+        val user = auth.currentUser ?: return
+
+        database.child("chat_summaries")
+            .child(user.uid)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val list = snapshot.children.mapNotNull {
+                        it.getValue(ChatSummary::class.java)
+                    }
+                    _chatSummaries.value = list.sortedByDescending { it.lastTimestamp }
+                }
+
+                override fun onCancelled(error: DatabaseError) {}
+            })
     }
 
     fun leaveFriendChat() {
