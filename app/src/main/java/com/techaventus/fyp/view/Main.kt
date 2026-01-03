@@ -2,10 +2,14 @@ package com.techaventus.fyp.view
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
@@ -21,9 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import com.techaventus.fyp.view.tabs.ChatsTab
 import com.techaventus.fyp.view.tabs.NotificationsTab
 import com.techaventus.fyp.view.tabs.ProfileTab
@@ -34,6 +40,7 @@ import com.techaventus.fyp.viewmodel.VM
 @Composable
 fun MainScreen(viewModel: VM) {
     val bottomTab by viewModel.bottomTab.collectAsState()
+    val hasUnread by viewModel.hasUnreadNotifications.collectAsState()
     val context = LocalContext.current
     var backPressedTime by remember { mutableStateOf(0L) }
 
@@ -71,7 +78,7 @@ fun MainScreen(viewModel: VM) {
                     )
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.AutoMirrored.Filled.Chat, null) },
+                        icon = { Icon(Icons.AutoMirrored.Filled.Chat, null) },
                     label = { Text("Chats") },
                     selected = bottomTab == "chats",
                     onClick = { viewModel.setBottomTab("chats") },
@@ -84,8 +91,21 @@ fun MainScreen(viewModel: VM) {
                     )
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Notifications, null) },
-                    label = { Text("Notifs") },
+                    icon = {
+                        Box {
+                            Icon(Icons.Default.Notifications, null)
+
+                            if (hasUnread) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .align(Alignment.TopEnd)
+                                        .background(Color.Red, CircleShape)
+                                )
+                            }
+                        }
+                    },
+                            label = { Text("Notifs") },
                     selected = bottomTab == "notifications",
                     onClick = { viewModel.setBottomTab("notifications") },
                     colors = NavigationBarItemDefaults.colors(

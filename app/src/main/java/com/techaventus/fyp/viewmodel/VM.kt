@@ -13,6 +13,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.database
+import com.techaventus.fyp.model.AppNotification
 import com.techaventus.fyp.model.ChatMessage
 import com.techaventus.fyp.model.Friend
 import com.techaventus.fyp.model.FriendRequest
@@ -22,6 +23,7 @@ import com.techaventus.fyp.model.UserProfile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -67,6 +69,12 @@ class VM : ViewModel() {
     private val _showSplash = MutableStateFlow(true)
     val showSplash: StateFlow<Boolean> = _showSplash
 
+    private val _notifications = MutableStateFlow<List<AppNotification>>(emptyList())
+    val notifications = _notifications.asStateFlow()
+
+    private val _hasUnreadNotifications = MutableStateFlow(false)
+    val hasUnreadNotifications = _hasUnreadNotifications.asStateFlow()
+
     var exoPlayer: ExoPlayer? = null
     var youtubePlayer: com.pierfrancescosoffritti.
     androidyoutubeplayer.core.player.
@@ -89,6 +97,7 @@ class VM : ViewModel() {
             fetchFriends()
             fetchFriendRequests()
             initFriendsListener()
+            listenNotifications()
         }
     }
 
@@ -518,7 +527,6 @@ class VM : ViewModel() {
                 }
             })
     }
-
     val currentUserId: String?
         get() = FirebaseAuth.getInstance().currentUser?.uid
 
@@ -608,6 +616,14 @@ class VM : ViewModel() {
                     .setValue(true).await()
                 database.child("friends").child(request.fromUserId).child(request.toUserId)
                     .setValue(true).await()
+
+                pushNotification(
+                    toUserId = request.fromUserId,
+                    type = "friend_accept",
+                    title = "Friend request accepted",
+                    message = "${_userProfile.value?.username} accepted your request",
+                    relatedId = request.toUserId
+                )
 
                 // Fetch updated friends lists
                 fetchFriends()         // Current user
@@ -780,8 +796,9 @@ class VM : ViewModel() {
                     message = message,
                     timestamp = System.currentTimeMillis()
                 )
-                database.child("friend_chats").child(roomId).child(messageId)
-                    .setValue(chatMessage).await()
+                database.child("friend_chats").child(roomId).child(messageId).setValue(chatMessage)
+                    .await()
+
             } catch (e: Exception) {
                 _error.value = e.message
             }
@@ -836,5 +853,61 @@ class VM : ViewModel() {
 
     fun completeSplash() {
         _showSplash.value = false
+    }
+
+    fun listenNotifications() {
+        val user = auth.currentUser ?: return
+
+        database.child("notifications").child(user.uid)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val list = mutableListOf<AppNotification>()
+
+                    snapshot.children.forEach { child ->
+                        child.getValue(AppNotification::class.java)?.let {
+                            list.add(it.copy(id = child.key ?: ""))
+                        }
+                    }
+
+                    _notifications.value = list.sortedByDescending { it.timestamp }
+                    _hasUnreadNotifications.value = list.any { !it.read }
+                }
+
+                override fun onCancelled(error: DatabaseError) {}
+            })
+    }
+
+    fun markNotificationRead(notificationId: String) {
+        val user = auth.currentUser ?: return
+        database.child("notifications")
+            .child(user.uid)
+            .child(notificationId)
+            .child("read")
+            .setValue(true)
+    }
+
+    private fun pushNotification(
+        toUserId: String,
+        type: String,
+        title: String,
+        message: String,
+        relatedId: String
+    ) {
+        val id = database.child("notifications").child(toUserId).push().key ?: return
+
+        val notification = AppNotification(
+            id = id,
+            type = type,
+            title = title,
+            message = message,
+            relatedId = relatedId,
+            read = false,
+            timestamp = System.currentTimeMillis()
+        )
+
+        database.child("notifications")
+            .child(toUserId)
+            .child(id)
+            .setValue(notification)
     }
 }

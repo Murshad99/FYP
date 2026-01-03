@@ -53,3 +53,12 @@ data class ChatMessage(
     val message: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )
+data class AppNotification(
+    val id: String = "",
+    val type: String = "",        // chat | friend_accept | room_invite
+    val title: String = "",
+    val message: String = "",
+    val relatedId: String = "",
+    val read: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
+)

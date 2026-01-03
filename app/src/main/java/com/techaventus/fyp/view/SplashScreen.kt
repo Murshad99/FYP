@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -97,7 +98,7 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
 
             // Tagline/Slogan
             Text(
-                text = "Watch Connect Enjoy Together.",
+                text = "Movies are better with friends.",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Normal,
                 color = Color.White.copy(alpha = 0.8f),

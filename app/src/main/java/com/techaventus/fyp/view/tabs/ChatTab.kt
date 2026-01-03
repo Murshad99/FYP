@@ -57,6 +57,7 @@ fun ChatsTab(viewModel: VM) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("Chats", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -209,7 +210,9 @@ fun FriendChatScreen(viewModel: VM, friend: Friend, onBack: () -> Unit) {
     val friendChatMessages by viewModel.friendChatMessages.collectAsState()
     val currentUserId = viewModel.currentUserId
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0F172A))) {
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .background(Color(0xFF0F172A))) {
         // Top bar
         Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF1E293B)) {
             Row(
@@ -319,7 +322,12 @@ fun FriendChatScreen(viewModel: VM, friend: Friend, onBack: () -> Unit) {
                         }
                     }
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, null, tint = Color(0xFFEC4899), modifier = Modifier.size(28.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        null,
+                        tint = Color(0xFFEC4899),
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
             }
         }
