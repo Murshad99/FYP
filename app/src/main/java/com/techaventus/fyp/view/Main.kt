@@ -1,5 +1,7 @@
 package com.techaventus.fyp.view
 
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -16,8 +18,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import com.techaventus.fyp.view.tabs.ChatsTab
 import com.techaventus.fyp.view.tabs.NotificationsTab
 import com.techaventus.fyp.view.tabs.ProfileTab
@@ -28,7 +34,25 @@ import com.techaventus.fyp.viewmodel.VM
 @Composable
 fun MainScreen(viewModel: VM) {
     val bottomTab by viewModel.bottomTab.collectAsState()
+    val context = LocalContext.current
+    var backPressedTime by remember { mutableStateOf(0L) }
 
+    BackHandler(enabled = true) {
+        if (bottomTab != "rooms") {
+            viewModel.setBottomTab("rooms")
+        } else {
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - backPressedTime < 2000) {
+            } else {
+                Toast.makeText(
+                    context,
+                    "Press back again to exit",
+                    Toast.LENGTH_SHORT
+                ).show()
+                backPressedTime = currentTime
+            }
+        }
+    }
     Scaffold(
         containerColor = Color(0xFF0F172A),
         bottomBar = {

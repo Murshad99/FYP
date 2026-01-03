@@ -1,5 +1,6 @@
 package com.techaventus.fyp.view.tabs
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -33,6 +34,12 @@ fun ChatsTab(viewModel: VM) {
     val requests by viewModel.friendRequests.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
     var chatWithFriend by remember { mutableStateOf<Friend?>(null) }
+
+
+    BackHandler(enabled = chatWithFriend != null) {
+        viewModel.leaveFriendChat()
+        chatWithFriend = null
+    }
 
     // Screen switch between Friend List & Chat
     if (chatWithFriend != null) {

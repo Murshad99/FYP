@@ -64,6 +64,9 @@ class VM : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error
 
+    private val _showSplash = MutableStateFlow(true)
+    val showSplash: StateFlow<Boolean> = _showSplash
+
     var exoPlayer: ExoPlayer? = null
     var youtubePlayer: com.pierfrancescosoffritti.
     androidyoutubeplayer.core.player.
@@ -829,5 +832,9 @@ class VM : ViewModel() {
                 _error.value = e.message
             }
         }
+    }
+
+    fun completeSplash() {
+        _showSplash.value = false
     }
 }
