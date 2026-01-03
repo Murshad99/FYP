@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
     private fun handleDeepLink(intent: Intent) {
         val data = intent.data ?: return
 
-        if (data.host == "abcapp.com" && data.path == "/join") {
+        if (data.host == "watchtogether.com" && data.path == "/join") {
             val roomId = data.getQueryParameter("roomId")
             if (roomId != null) {
                 viewModel.joinRoom(roomId)
