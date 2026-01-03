@@ -24,16 +24,19 @@
             android:theme="@style/Theme.Abc">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- DEEP LINK -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <category android:name="android.intent.category.LAUNCHER" />
 
-                <!-- custom link -->
                 <data
                     android:scheme="https"
-                    android:host="abcapp.com"
+                    android:host="watchtogether.com"
                     android:pathPrefix="/join" />
             </intent-filter>
         </activity>
