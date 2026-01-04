@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  android-build:
+    image: abc-watchtogether-build:latest
+    container_name: watchtogether_android_build
+    volumes:
+      # Container ke /app/app/build/outputs ko host ke folder se map kar do
+      - ./app/build/outputs:/app/app/build/outputs
+    environment:
+      - GRADLE_OPTS=-Dorg.gradle.daemon=false
+      - GRADLE_USER_HOME=/tmp/gradle
+    # Container me interactive terminal open rakhna
+    stdin_open: true
+    tty: true
