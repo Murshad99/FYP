@@ -352,7 +352,6 @@ class VM : ViewModel() {
                 isSyncing = false
                 lastUpdateState = null
 
-                // First get room data
                 val snapshot = database.child("rooms").child(roomId).get().await()
                 val room = snapshot.getValue(RoomData::class.java)
 
@@ -361,7 +360,6 @@ class VM : ViewModel() {
                     return@launch
                 }
 
-                // Set current room BEFORE adding listener
                 _currentRoom.value = room
 
                 // Add member to room
@@ -375,7 +373,6 @@ class VM : ViewModel() {
                     .child("members").child(user.uid)
                     .setValue(member).await()
 
-                // Listen to room state changes for real-time sync
                 roomListener = object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
                         val updatedRoom = snapshot.getValue(RoomData::class.java)
@@ -383,16 +380,18 @@ class VM : ViewModel() {
 
                         updatedRoom?.let { newRoom ->
                             if (oldRoom != null) {
-                                val playStateChanged = oldRoom.isPlaying != newRoom.isPlaying
-                                val timeDiff =
-                                    kotlin.math.abs(oldRoom.currentTime - newRoom.currentTime)
-                                val timeChanged = timeDiff > 3000 // 3 seconds threshold
+                                // Check for video changes
+                                val videoChanged = oldRoom.videoUrl != newRoom.videoUrl ||
+                                        oldRoom.videoType != newRoom.videoType
 
-                                // Update local state first
+                                val playStateChanged = oldRoom.isPlaying != newRoom.isPlaying
+                                val timeDiff = kotlin.math.abs(oldRoom.currentTime - newRoom.currentTime)
+                                val timeChanged = timeDiff > 3000
+
                                 _currentRoom.value = newRoom
 
-                                // Only sync if there's a significant change
-                                if (playStateChanged || timeChanged) {
+                                // Sync playback if needed
+                                if (!videoChanged && (playStateChanged || timeChanged)) {
                                     syncVideoToState(newRoom)
                                 }
                             } else {
@@ -939,31 +938,37 @@ class VM : ViewModel() {
 
         viewModelScope.launch {
             try {
-                // Detect video type
+                _loading.value = true
+
+                val clearUpdates = mapOf(
+                    "videoUrl" to "",
+                    "videoType" to "none",
+                    "currentTime" to 0L,
+                    "isPlaying" to false
+                )
+                database.child("rooms").child(room.roomId).updateChildren(clearUpdates).await()
+
+                delay(300)
+
                 val videoType = when {
                     videoUrl.contains("youtube.com") || videoUrl.contains("youtu.be") -> "youtube"
                     videoUrl.isNotEmpty() -> "url"
                     else -> "none"
                 }
 
-                val updates = mapOf(
+                val newUpdates = mapOf(
                     "videoUrl" to videoUrl,
                     "videoType" to videoType,
                     "currentTime" to 0L,
                     "isPlaying" to false
                 )
 
-                database.child("rooms").child(room.roomId).updateChildren(updates).await()
+                database.child("rooms").child(room.roomId).updateChildren(newUpdates).await()
 
-                // Update local state
-                _currentRoom.value = room.copy(
-                    videoUrl = videoUrl,
-                    videoType = videoType,
-                    currentTime = 0,
-                    isPlaying = false
-                )
             } catch (e: Exception) {
-                _error.value = e.message
+                _error.value = "Failed to update media: ${e.message}"
+            } finally {
+                _loading.value = false
             }
         }
     }

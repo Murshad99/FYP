@@ -95,8 +95,11 @@ fun RoomScreen(viewModel: VM) {
     var showMediaSelector by remember { mutableStateOf(false) }
     var showYouTubeSearch by remember { mutableStateOf(false) }
 
-    DisposableEffect(Unit) {
+
+    DisposableEffect(room?.videoUrl, room?.videoType) {
         onDispose {
+            println("DEBUG: Cleaning up old video player")
+            viewModel.exoPlayer?.stop()
             viewModel.exoPlayer?.release()
             viewModel.exoPlayer = null
             viewModel.youtubePlayer = null
