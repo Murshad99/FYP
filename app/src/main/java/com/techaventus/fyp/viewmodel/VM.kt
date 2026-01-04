@@ -23,12 +23,14 @@ import com.techaventus.fyp.model.FriendRequest
 import com.techaventus.fyp.model.Member
 import com.techaventus.fyp.model.RoomData
 import com.techaventus.fyp.model.UserProfile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 class VM : ViewModel() {
 
@@ -188,7 +190,7 @@ class VM : ViewModel() {
                     if (!snapshot.exists()) {
                         val profile = UserProfile(
                             userId = user.uid,
-                            username = user.displayName ?: "User",
+                            username = (user.displayName ?: "user").trim().lowercase(),
                             email = user.email ?: "",
                             photoUrl = user.photoUrl?.toString() ?: ""
                         )
@@ -249,8 +251,12 @@ class VM : ViewModel() {
                 database.child("notifications").child(user.uid).removeValue().await()
 
                 //  Remove rooms created by user
-                val roomsSnapshot = database.child("rooms").orderByChild("creatorId").equalTo(user.uid).get().await()
-                roomsSnapshot.children.forEach { database.child("rooms").child(it.key!!).removeValue() }
+                val roomsSnapshot =
+                    database.child("rooms").orderByChild("creatorId").equalTo(user.uid).get()
+                        .await()
+                roomsSnapshot.children.forEach {
+                    database.child("rooms").child(it.key!!).removeValue()
+                }
                 user.delete().await()
 
                 _user.value = null
@@ -264,6 +270,7 @@ class VM : ViewModel() {
             }
         }
     }
+
     private fun loadUserProfile() {
         val user = auth.currentUser ?: return
         viewModelScope.launch {
@@ -629,22 +636,35 @@ class VM : ViewModel() {
         username: String,
         callback: (List<UserProfile>) -> Unit
     ) {
+        val query = username.trim().lowercase()
+        if (query.isEmpty()) {
+            callback(emptyList())
+            return
+        }
+
         viewModelScope.launch {
             try {
-                val snapshot = database.child("users")
-                    .orderByChild("username")
-                    .startAt(username)
-                    .endAt(username + "\uf8ff")
-                    .get()
-                    .await()
+                // Saray users fetch karo
+                val snapshot = database.child("users").get().await()
 
-                val users = snapshot.children.mapNotNull {
+                // Locally filter karo
+                val list = snapshot.children.mapNotNull {
                     it.getValue(UserProfile::class.java)
-                }
+                }.filter { user ->
+                    // Current user ko exclude karo aur username match karo
+                    user.userId != auth.currentUser?.uid &&
+                            user.username.lowercase().contains(query)
+                }.take(10) // Maximum 10 results
 
-                callback(users)
+                // Main thread pe callback
+                withContext(Dispatchers.Main) {
+                    callback(list)
+                }
             } catch (e: Exception) {
-                callback(emptyList())
+                _error.value = "Search failed: ${e.message}"
+                withContext(Dispatchers.Main) {
+                    callback(emptyList())
+                }
             }
         }
     }
@@ -654,6 +674,23 @@ class VM : ViewModel() {
             try {
                 val user = auth.currentUser ?: return@launch
                 val profile = _userProfile.value ?: return@launch
+
+                val existing = database.child("friend_requests")
+                    .orderByChild("fromUserId")
+                    .equalTo(user.uid)
+                    .get()
+                    .await()
+
+                val alreadySent = existing.children.any {
+                    it.getValue(FriendRequest::class.java)?.toUserId == toUserId &&
+                            it.child("status").value == "pending"
+                }
+
+                if (alreadySent) {
+                    _error.value = "Request already sent"
+                    return@launch
+                }
+
                 val requestId = database.child("friend_requests").push().key ?: return@launch
 
                 val request = FriendRequest(
@@ -664,6 +701,7 @@ class VM : ViewModel() {
                 )
 
                 database.child("friend_requests").child(requestId).setValue(request).await()
+
             } catch (e: Exception) {
                 _error.value = e.message
             }
@@ -692,9 +730,9 @@ class VM : ViewModel() {
                 )
 
                 // Fetch updated friends lists
-                fetchFriends()         // Current user
+                fetchFriends()
                 if (request.toUserId == auth.currentUser?.uid) {
-                    fetchFriends()     // Optional: double call ensures recomposition
+                    fetchFriends()
                 }
 
                 fetchFriendRequests()
