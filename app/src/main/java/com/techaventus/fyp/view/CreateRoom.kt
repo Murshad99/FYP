@@ -42,7 +42,7 @@ import com.techaventus.fyp.viewmodel.VM
 @Composable
 fun CreateRoomScreen(viewModel: VM) {
     var roomName by remember { mutableStateOf("") }
-    var isPublic by remember { mutableStateOf(false) }
+    var isPublic by remember { mutableStateOf(true) }
 
     Column(modifier = Modifier
         .fillMaxSize()

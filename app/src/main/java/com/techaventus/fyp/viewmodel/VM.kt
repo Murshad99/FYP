@@ -1,9 +1,12 @@
 package com.techaventus.fyp.viewmodel
 
+import android.content.Context
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.ExoPlayer
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
@@ -103,18 +106,41 @@ class VM : ViewModel() {
 
 
     fun signUp(email: String, password: String, username: String) {
+        if (username.isBlank()) {
+            _error.value = "Username is required"
+            return
+        }
         viewModelScope.launch {
             try {
                 _loading.value = true
-                val result = auth.createUserWithEmailAndPassword(email, password).await()
-                result.user?.let { user ->
-                    val profile = UserProfile(
-                        userId = user.uid,
-                        username = username,
-                        email = email
-                    )
-                    database.child("users").child(user.uid).setValue(profile).await()
+
+                val cleanUsername = username.trim().lowercase()
+                // Check username availability
+                val usernameRef = database.child("usernames").child(cleanUsername)
+                if (usernameRef.get().await().exists()) {
+                    _error.value = "Username already taken"
+                    _loading.value = false
+                    return@launch
                 }
+
+                val result = auth
+                    .createUserWithEmailAndPassword(email, password)
+                    .await()
+                val user = result.user ?: throw Exception("Signup failed")
+
+                val profile = UserProfile(
+                    userId = user.uid,
+                    username = cleanUsername,
+                    email = email
+                )
+
+                // multi-path update
+                val updates = mapOf(
+                    "users/${user.uid}" to profile,
+                    "usernames/$cleanUsername" to user.uid
+                )
+                database.updateChildren(updates).await()
+
                 _user.value = auth.currentUser
                 loadUserProfile()
                 _screen.value = "main"
@@ -122,6 +148,7 @@ class VM : ViewModel() {
                 fetchMyRooms()
                 fetchFriends()
                 fetchFriendRequests()
+
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
@@ -182,14 +209,61 @@ class VM : ViewModel() {
         }
     }
 
-    fun signOut() {
-        auth.signOut()
+    fun signOut(context: Context) {
+        FirebaseAuth.getInstance().signOut()
+
+        //Google Sign-In client sign out
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken("446106643298-o0mvtk00i63km9v4jr60c9u4ghkj7ltm.apps.googleusercontent.com") // Web client ID
+            .requestEmail()
+            .build()
+        val googleSignInClient = GoogleSignIn.getClient(context, gso)
+        googleSignInClient.signOut().addOnCompleteListener {
+            println("Google Sign-In client signed out")
+        }
         _user.value = null
         _userProfile.value = null
         _screen.value = "auth"
         _bottomTab.value = "rooms"
     }
 
+    fun deleteCurrentUser() {
+        val user = auth.currentUser ?: return
+        viewModelScope.launch {
+            try {
+                _loading.value = true
+
+                // Remove user profile
+                database.child("users").child(user.uid).removeValue().await()
+
+                // Remove friend requests sent by this user
+                val friendReqs = database.child("friend_requests").get().await()
+                friendReqs.children.forEach {
+                    val fr = it.getValue(FriendRequest::class.java)
+                    if (fr?.fromUserId == user.uid || fr?.toUserId == user.uid) {
+                        database.child("friend_requests").child(it.key!!).removeValue()
+                    }
+                }
+
+                // Remove notifications
+                database.child("notifications").child(user.uid).removeValue().await()
+
+                //  Remove rooms created by user
+                val roomsSnapshot = database.child("rooms").orderByChild("creatorId").equalTo(user.uid).get().await()
+                roomsSnapshot.children.forEach { database.child("rooms").child(it.key!!).removeValue() }
+                user.delete().await()
+
+                _user.value = null
+                _userProfile.value = null
+                _screen.value = "auth"
+
+            } catch (e: Exception) {
+                _error.value = e.message
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
     private fun loadUserProfile() {
         val user = auth.currentUser ?: return
         viewModelScope.launch {
@@ -229,10 +303,10 @@ class VM : ViewModel() {
 
                 val room = RoomData(
                     roomId = roomId,
-                    roomName = roomName,
+                    roomName = roomName.trim(),
                     videoUrl = "", // Empty initially
                     videoType = "none", // No video yet
-                    isPublic = isPublic,
+                    public = isPublic,
                     creator = profile?.username ?: "User",
                     creatorId = user.uid,
                     members = mapOf(
@@ -357,11 +431,8 @@ class VM : ViewModel() {
                     database.child("rooms").child(roomId)
                         .child("members").child(user.uid)
                         .updateChildren(updates).await()
-
-                    println("DEBUG: Presence updated for user: ${user.uid}")
                     delay(3000)
                 } catch (e: Exception) {
-                    println("DEBUG: Presence update failed: ${e.message}")
                 }
             }
         }
@@ -405,7 +476,6 @@ class VM : ViewModel() {
 
                             if (timeDiff > 5) {
                                 player.seekTo(targetTime)
-                                println("DEBUG: Synced time to $targetTime")
                             }
                         }
                     }
@@ -432,14 +502,12 @@ class VM : ViewModel() {
         // Check if state actually changed
         val lastState = lastUpdateState
         if (lastState != null && lastState.first == isPlaying && kotlin.math.abs(lastState.second - currentTime) < 1000) {
-            println("DEBUG: State unchanged, skipping update")
             return
         }
 
         // Debouncing: Don't update too frequently
         val now = System.currentTimeMillis()
         if (now - lastUpdateTime < 1000) { // Increased to 1 second
-            println("DEBUG: Skipping update (too frequent)")
             return
         }
         lastUpdateTime = now
@@ -452,10 +520,8 @@ class VM : ViewModel() {
                     "currentTime" to currentTime
                 )
                 database.child("rooms").child(room.roomId).updateChildren(updates).await()
-                println("DEBUG: Updated Firebase - Playing: $isPlaying, Time: $currentTime")
             } catch (e: Exception) {
                 _error.value = e.message
-                println("DEBUG: Firebase update failed: ${e.message}")
             }
         }
     }
@@ -484,8 +550,6 @@ class VM : ViewModel() {
         roomListener = null
         chatListener = null
         _screen.value = "main"
-
-        println("DEBUG: Left room, all state reset")
     }
 
     fun fetchPublicRooms() {
@@ -495,7 +559,7 @@ class VM : ViewModel() {
                     val roomsList = mutableListOf<RoomData>()
                     snapshot.children.forEach { child ->
                         val room = child.getValue(RoomData::class.java)
-                        if (room != null && room.isPublic) {
+                        if (room != null && room.public) {
                             roomsList.add(room)
                         }
                     }
@@ -527,6 +591,7 @@ class VM : ViewModel() {
                 }
             })
     }
+
     val currentUserId: String?
         get() = FirebaseAuth.getInstance().currentUser?.uid
 

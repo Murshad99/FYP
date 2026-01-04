@@ -49,7 +49,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.techaventus.fyp.viewmodel.VM
 
-// Auth Screen
 @Composable
 fun AuthScreen(viewModel: VM) {
     val context = LocalContext.current
@@ -66,7 +65,9 @@ fun AuthScreen(viewModel: VM) {
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(ApiException::class.java)
-            account.idToken?.let { viewModel.signInWithGoogle(it) }
+            account.idToken?.let { token ->
+                viewModel.signInWithGoogle(token)
+            }
         } catch (e: ApiException) {
         }
     }
@@ -108,7 +109,8 @@ fun AuthScreen(viewModel: VM) {
             Spacer(Modifier.height(32.dp))
 
             Card(
-                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(0.1f))
             ) {
                 Column(
@@ -117,7 +119,8 @@ fun AuthScreen(viewModel: VM) {
                 ) {
                     if (isSignUp) {
                         OutlinedTextField(
-                            value = username, onValueChange = { username = it },
+                            value = username,
+                            onValueChange = { username = it },
                             label = { Text("Username", color = Color.White.copy(0.7f)) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -130,7 +133,8 @@ fun AuthScreen(viewModel: VM) {
                     }
 
                     OutlinedTextField(
-                        value = email, onValueChange = { email = it },
+                        value = email,
+                        onValueChange = { email = it },
                         label = { Text("Email", color = Color.White.copy(0.7f)) },
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -142,7 +146,8 @@ fun AuthScreen(viewModel: VM) {
                     )
 
                     OutlinedTextField(
-                        value = password, onValueChange = { password = it },
+                        value = password,
+                        onValueChange = { password = it },
                         label = { Text("Password", color = Color.White.copy(0.7f)) },
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
@@ -154,24 +159,30 @@ fun AuthScreen(viewModel: VM) {
                         )
                     )
 
-                    if (error != null) Text(error ?: "", color = Color.Red, fontSize = 12.sp)
+                    if (error != null) {
+                        Text(error ?: "", color = Color.Red, fontSize = 12.sp)
+                    }
 
                     Button(
                         onClick = {
-                            if (isSignUp) viewModel.signUp(
-                                email,
-                                password,
-                                username
-                            ) else viewModel.signIn(email, password)
+                            if (isSignUp) {
+                                viewModel.signUp(email, password, username)
+                            } else {
+                                viewModel.signIn(email, password)
+                            }
                         },
-                        modifier = Modifier.fillMaxWidth(), enabled = !loading,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !loading,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899))
                     ) {
-                        if (loading) CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = Color.White
-                        )
-                        else Text(if (isSignUp) "Sign Up" else "Sign In")
+                        if (loading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White
+                            )
+                        } else {
+                            Text(if (isSignUp) "Sign Up" else "Sign In")
+                        }
                     }
 
                     HorizontalDivider(color = Color.White.copy(0.3f))
@@ -180,15 +191,25 @@ fun AuthScreen(viewModel: VM) {
                         onClick = {
                             val gso =
                                 GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                                    .requestIdToken("446106643298-o0mvtk00i63km9v4jr60c9u4ghkj7ltm.apps.googleusercontent.com") // Web client Id
-                                    .requestEmail().build()
+                                    .requestIdToken("446106643298-o0mvtk00i63km9v4jr60c9u4ghkj7ltm.apps.googleusercontent.com")
+                                    .requestEmail()
+                                    .build()
+
                             val googleSignInClient = GoogleSignIn.getClient(context, gso)
-                            googleSignInLauncher.launch(googleSignInClient.signInIntent)
+
+                            googleSignInClient.signOut().addOnCompleteListener {
+                                googleSignInLauncher.launch(googleSignInClient.signInIntent)
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        enabled = !loading
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Login, null, modifier = Modifier.size(20.dp))
+                        Icon(
+                            Icons.AutoMirrored.Filled.Login,
+                            null,
+                            modifier = Modifier.size(20.dp)
+                        )
                         Spacer(Modifier.width(8.dp))
                         Text("Sign in with Google")
                     }

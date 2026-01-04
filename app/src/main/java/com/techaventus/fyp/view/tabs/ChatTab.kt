@@ -1,5 +1,6 @@
 package com.techaventus.fyp.view.tabs
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -33,8 +35,8 @@ fun ChatsTab(viewModel: VM) {
     val friends by viewModel.friends.collectAsState()
     val requests by viewModel.friendRequests.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     var chatWithFriend by remember { mutableStateOf<Friend?>(null) }
-
 
     BackHandler(enabled = chatWithFriend != null) {
         viewModel.leaveFriendChat()
@@ -60,9 +62,20 @@ fun ChatsTab(viewModel: VM) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Chats", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                IconButton(onClick = { showAdd = true }) {
-                    Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color.White)
+                Text(
+                    "Chats",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                IconButton(
+                    onClick = { showAdd = true }
+                ) {
+                    Icon(
+                        Icons.Default.PersonAdd,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
                 }
             }
         }
@@ -140,9 +153,13 @@ fun ChatsTab(viewModel: VM) {
         var username by remember { mutableStateOf("") }
         var results by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
         var searched by remember { mutableStateOf(false) }
-
+        val currentFriends by viewModel.friends.collectAsState()
         AlertDialog(
-            onDismissRequest = { showAdd = false; results = emptyList(); searched = false },
+            onDismissRequest = {
+                showAdd = false
+                results = emptyList()
+                searched = false
+            },
             title = { Text("Add Friend") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -153,22 +170,29 @@ fun ChatsTab(viewModel: VM) {
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Button(modifier = Modifier.fillMaxWidth(), onClick = {
-                        searched = true
-                        viewModel.searchUserByUserName(username) { results = it }
-                    }) {
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            searched = true
+                            viewModel.searchUserByUserName(username) { results = it }
+                        }
+                    ) {
                         Text("Search")
                     }
 
                     when {
                         results.isNotEmpty() -> {
                             results.forEach { user ->
+                                val isAlreadyFriend =
+                                    currentFriends.any { it.userId == user.userId }
+                                val isRequestSent = viewModel.friendRequests.value.any {
+                                    it.toUserId == user.userId && it.status == "pending"
+                                }
+
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = CardDefaults.cardColors(
-                                        containerColor = Color(
-                                            0xFF1E293B
-                                        )
+                                        containerColor = Color(0xFF1E293B)
                                     )
                                 ) {
                                     Row(
@@ -182,10 +206,46 @@ fun ChatsTab(viewModel: VM) {
                                             modifier = Modifier.weight(1f),
                                             color = Color.White
                                         )
-                                        Button(onClick = {
-                                            viewModel.sendFriendRequest(user.userId)
-                                            showAdd = false
-                                        }) { Text("Send") }
+
+                                        Button(
+                                            onClick = {
+                                                when {
+                                                    isAlreadyFriend -> {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Already friends",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                    isRequestSent -> {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Request already sent",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+
+                                                    else -> {
+                                                        viewModel.sendFriendRequest(user.userId)
+                                                        showAdd = false
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Friend request sent",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            },
+                                            enabled = !(isAlreadyFriend || isRequestSent)
+                                        ) {
+                                            Text(
+                                                when {
+                                                    isAlreadyFriend -> "Friends"
+                                                    isRequestSent -> "Pending"
+                                                    else -> "Send"
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -203,16 +263,17 @@ fun ChatsTab(viewModel: VM) {
     }
 }
 
-// Friend Chat Screen
 @Composable
 fun FriendChatScreen(viewModel: VM, friend: Friend, onBack: () -> Unit) {
     var message by remember { mutableStateOf("") }
     val friendChatMessages by viewModel.friendChatMessages.collectAsState()
     val currentUserId = viewModel.currentUserId
 
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .background(Color(0xFF0F172A))) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F172A))
+    ) {
         // Top bar
         Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xFF1E293B)) {
             Row(
