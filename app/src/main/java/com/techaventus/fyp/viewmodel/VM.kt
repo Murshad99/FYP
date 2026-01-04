@@ -117,31 +117,35 @@ class VM : ViewModel() {
                 _loading.value = true
 
                 val cleanUsername = username.trim().lowercase()
-                // Check username availability
-                val usernameRef = database.child("usernames").child(cleanUsername)
-                if (usernameRef.get().await().exists()) {
-                    _error.value = "Username already taken"
-                    _loading.value = false
-                    return@launch
-                }
 
+                // FIRST: Create user account (so user gets authenticated)
                 val result = auth
                     .createUserWithEmailAndPassword(email, password)
                     .await()
                 val user = result.user ?: throw Exception("Signup failed")
 
+                // NOW user is authenticated, can check username
+                val usernameRef = database.child("usernames").child(cleanUsername)
+                val usernameSnapshot = usernameRef.get().await()
+
+                if (usernameSnapshot.exists()) {
+                    // Username taken, delete the auth account we just created
+                    user.delete().await()
+                    _error.value = "Username already taken"
+                    _loading.value = false
+                    return@launch
+                }
+
+                // Create profile
                 val profile = UserProfile(
                     userId = user.uid,
                     username = cleanUsername,
                     email = email
                 )
 
-                // multi-path update
-                val updates = mapOf(
-                    "users/${user.uid}" to profile,
-                    "usernames/$cleanUsername" to user.uid
-                )
-                database.updateChildren(updates).await()
+                // Save to database
+                database.child("users").child(user.uid).setValue(profile).await()
+                database.child("usernames").child(cleanUsername).setValue(user.uid).await()
 
                 _user.value = auth.currentUser
                 loadUserProfile()
@@ -150,6 +154,8 @@ class VM : ViewModel() {
                 fetchMyRooms()
                 fetchFriends()
                 fetchFriendRequests()
+                initFriendsListener()
+                listenNotifications()
 
             } catch (e: Exception) {
                 _error.value = e.message
