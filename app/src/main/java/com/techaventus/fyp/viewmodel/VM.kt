@@ -597,6 +597,7 @@ class VM : ViewModel() {
                     fromUsername = profile.username,
                     toUserId = toUserId
                 )
+
                 database.child("friend_requests").child(requestId).setValue(request).await()
             } catch (e: Exception) {
                 _error.value = e.message
@@ -643,6 +644,13 @@ class VM : ViewModel() {
             try {
                 database.child("friend_requests").child(request.requestId).child("status")
                     .setValue("rejected").await()
+                pushNotification(
+                    toUserId = request.fromUserId,
+                    type = "friend_reject",
+                    title = "Friend request rejected",
+                    message = "${_userProfile.value?.username} rejected your request",
+                    relatedId = request.toUserId
+                )
                 fetchFriendRequests()
             } catch (e: Exception) {
                 _error.value = e.message
